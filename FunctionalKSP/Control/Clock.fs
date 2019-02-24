@@ -17,6 +17,12 @@ type Clock(conn: Connection, ksc: SpaceCenter.Service) =
 
     member this.Time with get(): float<s> = timeStream.Value
 
+    /// Blockingly warp to the specified time
+    member this.WarpTo(ut: float<s>) =
+        if ksc.CanRailsWarpAt() then
+            ksc.WarpTo(ut / 1.<s>)
+        this.Tick() |> ignore
+
     /// Wait until the clock moved forward and return the new time
     member this.Tick(): float<s> =
         lock timeStream.RpcStream.Condition <| fun () ->
