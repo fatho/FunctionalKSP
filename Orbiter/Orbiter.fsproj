@@ -5,14 +5,14 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>f453c731-e5d2-4232-b48c-cffdf6a8383d</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <RootNamespace>FunctionalKSP</RootNamespace>
-    <AssemblyName>FunctionalKSP</AssemblyName>
-    <UseStandardResourceNames>true</UseStandardResourceNames>
+    <ProjectGuid>158edefd-0bc3-4d5b-9c44-440344cf66b6</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Orbiter</RootNamespace>
+    <AssemblyName>Orbiter</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Name>FunctionalKSP</Name>
+    <UseStandardResourceNames>true</UseStandardResourceNames>
+    <Name>Orbiter</Name>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -22,7 +22,9 @@
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
-    <DocumentationFile>bin\Debug\FunctionalKSP.XML</DocumentationFile>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DocumentationFile>bin\$(Configuration)\$(AssemblyName).XML</DocumentationFile>
+    <Prefer32Bit>true</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -31,7 +33,9 @@
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\$(Configuration)\$(AssemblyName).XML</DocumentationFile>
+    <Prefer32Bit>true</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
@@ -42,19 +46,9 @@
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="Program.fs" />
+    <None Include="App.config" />
     <Content Include="packages.config" />
-    <Compile Include="Units.fs" />
-    <Compile Include="LinearAlgebra.fs" />
-    <Compile Include="Extensions.fs" />
-    <Compile Include="Telemetry.fs" />
-    <Compile Include="Mechanics\Orbital.fs" />
-    <Compile Include="Mechanics\General.fs" />
-    <Compile Include="Control\Clock.fs" />
-    <Compile Include="Control\PidLoop.fs" />
-    <Compile Include="Control\Rocket.fs" />
-    <Compile Include="Launch.fs" />
-    <Compile Include="Rules.fs" />
-    <Compile Include="Maneuver.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core">
@@ -66,21 +60,21 @@
     <Reference Include="KRPC.Client">
       <HintPath>..\packages\KRPC.Client.0.4.8\lib\net45\KRPC.Client.dll</HintPath>
     </Reference>
-    <Reference Include="MathNet.Numerics">
-      <HintPath>..\packages\MathNet.Numerics.4.7.0\lib\net461\MathNet.Numerics.dll</HintPath>
-    </Reference>
-    <Reference Include="MathNet.Numerics.FSharp">
-      <HintPath>..\packages\MathNet.Numerics.FSharp.4.7.0\lib\net45\MathNet.Numerics.FSharp.dll</HintPath>
-    </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
-    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.ValueTuple">
       <HintPath>..\packages\System.ValueTuple.4.4.0\lib\net461\System.ValueTuple.dll</HintPath>
       <Private>True</Private>
     </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FunctionalKSP\FunctionalKSP.fsproj">
+      <Name>FunctionalKSP</Name>
+      <Project>{f453c731-e5d2-4232-b48c-cffdf6a8383d}</Project>
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
