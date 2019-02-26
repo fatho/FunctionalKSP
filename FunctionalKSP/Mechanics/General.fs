@@ -1,6 +1,6 @@
 ﻿namespace FunctionalKSP.Mechanics
 
-open FunctionalKSP.LinearAlgebra
+open FunctionalKSP.Math
 open FunctionalKSP.Units
 
 module Inertia =

@@ -6,7 +6,7 @@ open KRPC.Client.Services.SpaceCenter;
 open System
 
 open Units;
-open FunctionalKSP.LinearAlgebra
+open FunctionalKSP.Math
 
 /// Some stream providing values
 type IStream<'a> =

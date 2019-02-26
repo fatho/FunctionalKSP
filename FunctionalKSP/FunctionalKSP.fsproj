@@ -44,7 +44,7 @@
     <Compile Include="AssemblyInfo.fs" />
     <Content Include="packages.config" />
     <Compile Include="Units.fs" />
-    <Compile Include="LinearAlgebra.fs" />
+    <Compile Include="Math.fs" />
     <Compile Include="Extensions.fs" />
     <Compile Include="Telemetry.fs" />
     <Compile Include="Mechanics\Orbital.fs" />
@@ -53,8 +53,9 @@
     <Compile Include="Control\PidLoop.fs" />
     <Compile Include="Control\Rocket.fs" />
     <Compile Include="Launch.fs" />
-    <Compile Include="Rules.fs" />
-    <Compile Include="Maneuver.fs" />
+    <Compile Include="Mission.fs" />
+    <Compile Include="Mission\Maneuver.fs" />
+    <Compile Include="Mission\Rules.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core">

@@ -9,71 +9,73 @@ open KRPC.Client.Services.SpaceCenter
 open System.Threading
 
 open FunctionalKSP
-open FunctionalKSP.LinearAlgebra
+open FunctionalKSP.Math
 open FunctionalKSP.Units
 open FunctionalKSP.Control
 open System
 open FunctionalKSP
+open FunctionalKSP.Mission
 
-let withKSP (f: Connection -> SpaceCenter.Service -> unit) =
+let run (mission: Mission<unit>) =
     /// Make connection
     use conn = new Connection()
-    let ksc = conn.SpaceCenter()
-    Rules.requireControllableVessel ksc.ActiveVessel
-    f conn ksc
+    Mission.run (MissionLoggers.stdoutLogger MissionLogLevel.Info) conn mission
 
-let orbiter () = withKSP <| fun conn ksc ->
-    use clock = new Clock(conn, ksc)
-    let steering = new Rocket.Steering(ksc, ksc.ActiveVessel)
-    /// Launch into LKO
-    Launch.launch ksc ksc.ActiveVessel Launch.KerbinProfile
-    let circularization = Maneuver.addCircularizationNode clock ksc.ActiveVessel Maneuver.Apoapsis
-    Maneuver.executeNext clock steering 30.<s>
+let orbiter: Mission<unit> = Mission.mission {
+    let! vessel = Mission.activeVessel
+    // do! Rules.requireControllableVessel vessel
+    // do! Mission.missionPrimitive <| fun env -> Launch.launch env.ksc env.ksc.ActiveVessel Launch.KerbinProfile
+    do! Maneuver.circularize Apsis.Apoapsis 20.<s>
+}
+
+//fun conn ksc ->
+//    /// Launch into LKO
+//    Launch.launch ksc ksc.ActiveVessel Launch.KerbinProfile
+
+//    use clock = new Clock(conn, ksc)
+//    let steering = new Rocket.Steering(ksc, ksc.ActiveVessel)
+//    let circularization = Maneuver.addCircularizationNode clock ksc.ActiveVessel Maneuver.Apoapsis
+//    Maneuver.executeNext clock steering 30.<s>
 
     
-let steeringTest () = withKSP <| fun conn ksc ->
-    use clock = new Clock(conn, ksc)
-    let steering = new Rocket.Steering(ksc, ksc.ActiveVessel)
+let steeringTest = Mission.mission {
+    let! vessel = Mission.activeVessel
+    //do Thread.Sleep(3000)
+
+    //do! Mission.log Mission.Info "Spinning out of control"
+    //do
+    //    let rand = new Random()
+    //    vessel.Control.Pitch <- float32 <| rand.NextDouble() * 2. - 1.
+    //    vessel.Control.Yaw <- float32 <| rand.NextDouble() * 2. - 1.
+    //    vessel.Control.Roll <- float32 <| rand.NextDouble() * 2. - 1.
+    //    Thread.Sleep(3000)
     
-    Thread.Sleep(3000)
-
-    printfn "Spinning out of control"
-    let rand = new Random()
-    ksc.ActiveVessel.Control.Pitch <- float32 <| rand.NextDouble() * 2. - 1.
-    ksc.ActiveVessel.Control.Yaw <- float32 <| rand.NextDouble() * 2. - 1.
-    ksc.ActiveVessel.Control.Roll <- float32 <| rand.NextDouble() * 2. - 1.
+    //do! Mission.log Mission.Info "Killing rotation"
+    //let! residual = Maneuver.killRotation 0.05<deg/s> 30.<s>
+    //return! Mission.log Mission.Info (sprintf "Residual rotation %.3f deg/s" (Vec3.mag residual))
     
-    //ksc.ActiveVessel.Control.Yaw <- 1.f
+    do! Mission.log Mission.Info "Orienting prograde"
+    let! residual = Maneuver.orient Vec3.unitY vessel.OrbitalReferenceFrame 0.5<deg> 30.<s>
+    return! Mission.log Mission.Info (sprintf "Residual rotation %.3f deg" residual)
+}
+//    ()
 
-    Thread.Sleep(3000)
+//let hohmannTest() = withKSP <| fun conn ksc ->
+//    use clock = new Clock(conn, ksc)
+//    let steering = new Rocket.Steering(ksc, ksc.ActiveVessel)
+
+//    Thread.Sleep(3000)
     
-    printfn "Orienting to prograde"
-
-    let prograde = Vec3.pack <| ksc.ActiveVessel.Flight(ksc.ActiveVessel.OrbitalReferenceFrame).Prograde
-    steering.Mode <- Rocket.SteeringMode.LockTarget (prograde, ksc.ActiveVessel.OrbitalReferenceFrame)
-
-    while true do
-        let time = clock.Tick()
-        steering.Update(time)
-    ()
-
-let hohmannTest() = withKSP <| fun conn ksc ->
-    use clock = new Clock(conn, ksc)
-    let steering = new Rocket.Steering(ksc, ksc.ActiveVessel)
-
-    Thread.Sleep(3000)
-    
-    //let hohmannTransfer = Maneuver.addHohmannNode clock ksc.ActiveVessel Maneuver.Apoapsis 200_000.<m>
-    //Maneuver.executeNext clock steering
-    let circularization = Maneuver.addCircularizationNode clock ksc.ActiveVessel Maneuver.Apoapsis
-    Maneuver.executeNext clock steering 10.<s>
-    ()
+//    //let hohmannTransfer = Maneuver.addHohmannNode clock ksc.ActiveVessel Maneuver.Apoapsis 200_000.<m>
+//    //Maneuver.executeNext clock steering
+//    let circularization = Maneuver.addCircularizationNode clock ksc.ActiveVessel Maneuver.Apoapsis
+//    Maneuver.executeNext clock steering 10.<s>
+//    ()
 
 [<EntryPoint>]
 let main argv = 
-    hohmannTest ()
-    //steeringTest ()
-    //// orbiter ()
+    run steeringTest
+
     //let up = Vec3.pack (0., 0., -1.)
     //let forward = Vec3.pack (0., 1., 0.)
     //let left = Vec3.pack (-1., 0., 0.)
