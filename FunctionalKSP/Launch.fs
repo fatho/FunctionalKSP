@@ -55,11 +55,8 @@ let launch (ksc: SpaceCenter.Service) (ship: Vessel) (profile: Profile) =
 
     let conn = ship.Connection
     let control = ship.Control
-    let pilot = ship.AutoPilot
-    let body = ship.Orbit.Body;
     let flight = ship.Flight(ship.SurfaceReferenceFrame);
-    let steering = new Rocket.AtmosphericSteering()
-    let coastSteering = new Rocket.ZeroGSteering(ksc, ship)
+    let steering = new Rocket.KosSteering()
     use clock = new Clock(conn, ksc)
 
     control.Throttle <- 0.f
@@ -89,24 +86,8 @@ let launch (ksc: SpaceCenter.Service) (ship: Vessel) (profile: Profile) =
         let upwards = cos pitchRad
         let sidewards = - sin pitchRad
         {x = upwards; y = cos azimuthRad * sidewards; z = sin azimuthRad * sidewards }
-
-    let north = compassDir 0.<deg>
-    let east = compassDir 90.<deg>
-
-    let launchAlt = altitudeS.Value
-    
-    printfn "pitch = %f deg" flight.Pitch
-    printfn "altitude = %f m" launchAlt
-
-    printfn "f(90, 90) %O" (forwardAtPitch 90.<deg> 90.<deg>)
-    printfn "f(45, 90) %O" (forwardAtPitch 45.<deg> 90.<deg>)
-    printfn "f( 0, 90) %O" (forwardAtPitch 0.<deg> 90.<deg>)
-    printfn "f(45,  0) %O" (forwardAtPitch 45.<deg> 0.<deg>)
         
-    printfn "u(90, 90) %O" (upAtPitch 90.<deg> 90.<deg>)
-    printfn "u(45, 90) %O" (upAtPitch 45.<deg> 90.<deg>)
-    printfn "u( 0, 90) %O" (upAtPitch 0.<deg> 90.<deg>)
-    printfn "u(45,  0) %O" (upAtPitch 45.<deg> 0.<deg>)
+    let launchAlt = altitudeS.Value
             
     printfn "Launching in"
     for count in { 0 .. profile.Countdown - 1 } do
@@ -121,30 +102,11 @@ let launch (ksc: SpaceCenter.Service) (ship: Vessel) (profile: Profile) =
    
     printfn "Ignition"
     stage ()
-    
-    let mutable dataCounter = 0
-    let dumpData desiredPitch =
-        dataCounter <- dataCounter + 1
-        if dataCounter >= 10 then
-            dataCounter <- 0
-            printfn "%6.0f %6.2f %6.2f %6.2f" altitudeS.Value flight.Heading flight.Pitch desiredPitch
 
     let combineTorques (pos: vec3<N m>, neg: vec3<N m>): vec3<N m> = Vec3.zip (fun a b -> min (abs a) (abs b)) pos neg
 
-    // Go straight up until high enough and fast enough to start turning
-    // (Turning to early might result in accidental collisions with launch clamps
-    // or result in the vessel spinning out of control)
-    while altitudeS.Value < profile.MinTurnAlt || 
-           floatU airSpeedS.Value < profile.MinTurnSpeed do
-
-        if shouldStage ship then
-            printfn "Staging!"
-            stage ()
-            
-        let fw = forwardAtPitch 89.9<deg> profile.LaunchAzimuth
-        let up = upAtPitch 89.9<deg> profile.LaunchAzimuth
-        
-        let shipAngVel = Vec3.pack<rad/s> <| ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame)
+    let steer fw up =
+        let shipAngVel = -(Vec3.pack<rad/s> <| ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
         let shipTarget = Vec3.pack <| ksc.TransformDirection(Vec3.unpack fw, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
         let shipUp = Vec3.pack <| ksc.TransformDirection(Vec3.unpack up, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
 
@@ -161,8 +123,22 @@ let launch (ksc: SpaceCenter.Service) (ship: Vessel) (profile: Profile) =
         control.Pitch <- float32U controls.x
         control.Yaw <- float32U controls.z
         control.Roll <- float32U controls.y
-        dumpData 89.9
-                
+
+    // Go straight up until high enough and fast enough to start turning
+    // (Turning to early might result in accidental collisions with launch clamps
+    // or result in the vessel spinning out of control)
+    while altitudeS.Value < profile.MinTurnAlt || 
+           floatU airSpeedS.Value < profile.MinTurnSpeed do
+
+        if shouldStage ship then
+            printfn "Staging!"
+            stage ()
+            
+        let fw = forwardAtPitch 89.9<deg> profile.LaunchAzimuth
+        let up = upAtPitch 89.9<deg> profile.LaunchAzimuth
+        
+        steer fw up
+
     printfn "Starting gravity turn"
 
     let turnStartAlt = altitudeS.Value
@@ -182,31 +158,11 @@ let launch (ksc: SpaceCenter.Service) (ship: Vessel) (profile: Profile) =
 
         control.Throttle <- throttle
 
-
         let desiredPitch = turnPitch profile turnStartAlt altitudeS.Value
         
         let fw = forwardAtPitch desiredPitch profile.LaunchAzimuth
         let up = upAtPitch desiredPitch profile.LaunchAzimuth
-        let shipAngVel = -(Vec3.pack<rad/s> <| ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
-        let shipTarget = Vec3.pack <| ksc.TransformDirection(Vec3.unpack fw, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
-        let shipUp = Vec3.pack <| ksc.TransformDirection(Vec3.unpack up, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
-
-        let time = clock.Tick()
-        let input = {
-            Rocket.sampleTime = time;
-            Rocket.targetForward = shipTarget;
-            Rocket.targetTop = shipUp;
-            Rocket.controlTorque = combineTorques availableTorqueS.Value;
-            Rocket.momentOfInertia = moiS.Value;
-            Rocket.angularVelocity = shipAngVel;
-        }
-        let atmosphericControls = steering.UpdatePrediction(input)
-        
-        control.Pitch <- float32U atmosphericControls.x
-        control.Yaw <- float32U atmosphericControls.z
-        control.Roll <- float32U atmosphericControls.y
-        
-        dumpData (float desiredPitch)
+        steer fw up
 
     control.Pitch <- 0.f
     control.Yaw <- 0.f

@@ -24,8 +24,9 @@ let run (mission: Mission<unit>) =
 let orbiter: Mission<unit> = Mission.mission {
     let! vessel = Mission.activeVessel
     // do! Rules.requireControllableVessel vessel
-    // do! Mission.missionPrimitive <| fun env -> Launch.launch env.ksc env.ksc.ActiveVessel Launch.KerbinProfile
-    do! Maneuver.circularize Apsis.Apoapsis 20.<s>
+    do! Mission.missionPrimitive <| fun env -> Launch.launch env.ksc env.ksc.ActiveVessel Launch.KerbinProfile
+    //do! Maneuver.circularize Apsis.Apoapsis 20.<s>
+    //do! Maneuver.deorbit 300.<s>
 }
 
 //fun conn ksc ->
@@ -55,8 +56,8 @@ let steeringTest = Mission.mission {
     //return! Mission.log Mission.Info (sprintf "Residual rotation %.3f deg/s" (Vec3.mag residual))
     
     do! Mission.log Mission.Info "Orienting prograde"
-    let! residual = Maneuver.orient Vec3.unitY vessel.OrbitalReferenceFrame 0.5<deg> 30.<s>
-    return! Mission.log Mission.Info (sprintf "Residual rotation %.3f deg" residual)
+    let! (residualAngle, residualVel) = Maneuver.orient Vec3.unitY vessel.OrbitalReferenceFrame 0.5<deg> 0.05<deg/s> 30.<s>
+    return! Mission.log Mission.Info (sprintf "Residual rotation %.3f deg ; %.3f deg/s" residualAngle residualVel)
 }
 //    ()
 
@@ -74,7 +75,7 @@ let steeringTest = Mission.mission {
 
 [<EntryPoint>]
 let main argv = 
-    run steeringTest
+    run orbiter
 
     //let up = Vec3.pack (0., 0., -1.)
     //let forward = Vec3.pack (0., 1., 0.)

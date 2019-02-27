@@ -17,32 +17,6 @@ type SteeringMode =
     | LockTarget of vec3<1> * ReferenceFrame
     | LockTargetUp of vec3<1> * vec3<1> * ReferenceFrame
 
-/// Angle from ship direction to target (given in ship reference frame)
-let shipAngleToTarget (targetForward: vec3<1>) (targetTop: vec3<1>): vec3<rad> =
-    let vesselForward = Vec3.unitY
-    let vesselStarboard = Vec3.unitX
-    let vesselTop = - Vec3.unitZ
-
-    printfn "shipAngleToTarget(%O, %O)" targetForward targetTop
-
-    let targetForwardNoStarboard = Vec3.exclude targetForward vesselStarboard
-    printfn "targetForwardNoStarboard = %O" targetForwardNoStarboard 
-    let phiPitch = Vec3.angle vesselTop targetForward
-        Vec3.angle vesselForward targetForwardNoStarboard * (
-            if Vec3.angle vesselTop targetForwardNoStarboard > 90.<deg> / degPerRad then -1. else 1.)
-
-    let targetForwardNoTop = Vec3.exclude targetForward vesselTop
-    let phiYaw =
-        Vec3.angle vesselForward targetForwardNoTop * (
-            if Vec3.angle vesselStarboard targetForwardNoTop > 90.<deg> / degPerRad then -1. else 1.)
-                
-    let targetTopNoForward = Vec3.exclude targetTop vesselForward
-    let phiRoll =
-        Vec3.angle vesselTop targetTopNoForward * (
-            if Vec3.angle vesselStarboard targetTopNoForward > 90.<deg> / degPerRad then -1. else 1.)
-    
-    { x = phiPitch; y = phiRoll; z = phiYaw }
-
 /// Computes perfect steering based on the available torque. Only works well in space.
 /// In an atmosphere, aerodynamic forces introduce too much disturbance for the formulas to still hold.
 /// TODO: take into account and counteract engine torque
@@ -115,43 +89,76 @@ type ZeroGSteering(ksc: SpaceCenter.Service, ship: Vessel) =
         -shipAngVel / horizon
     
     let lockTarget (dt: float<s>) (shipTarget: vec3<1>) (shipUp: vec3<1>): vec3<rad / s^2> =
-        // angular velocity
-        let omegas = -(Vec3.pack<rad/s> <| ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
-        // rotation angles towards target
-        let phis = shipAngleToTarget shipTarget shipUp
-        // available angular accelerations
-        let moi = moiS.Value
-        let (positiveTorque, negativeTorque) = availableTorqueS.Value
-        let availableTorque = Vec3.zip min positiveTorque -negativeTorque
-        let availableAlphas = Inertia.angularAcceleration moi availableTorque
-
-        // stopping times and distances
-        let stoppingTimes = Vec3.zip (/) omegas availableAlphas
-        let stoppingDistances = 0.5 * Vec3.zip (*) omegas stoppingTimes
-
-        // optimal angular velocity for stopping right on target
-        let optimalOmegas = Vec3.map sqrt (2. / 3. * Vec3.zip (*) (Vec3.map abs phis) availableAlphas)
-
-        // desired target omega
-        let targetOmega (optimalOmega: float<rad/s>) (stoppingDistance: float<rad>) =
-            if stoppingDistance > 90.<deg> / degPerRad then 0.<rad/s> else optimalOmega
-
-        let targetOmegas = Vec3.zip targetOmega optimalOmegas stoppingDistances
-
-        // only roll when close on target
-        let phiPitchYaw = Vec3.angle Vec3.unitY shipTarget
-        let rollEasing (deviation: float<rad>) = 1. / (1. + exp (1.</rad> * (deviation - 5.<deg> / degPerRad)))
-        let adjustedTargetOmegas = { targetOmegas with y = targetOmegas.y * rollEasing phiPitchYaw }
+        let shipAngVel = -(Vec3.pack<rad/s> <| ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
         
-        printfn "%O %O %O" (phis * degPerRad) (omegas * degPerRad) (adjustedTargetOmegas* degPerRad)
+        let axisAngle v1 v2 =
+            let axis = Vec3.cross v1 v2
+            let angle = Vec3.angle v1 v2
+            if angle > 179.9999999<deg> / degPerRad then
+                // vectors are 180 degrees apart, rotate around pitch axis
+                Vec3.unitX, angle
+            else
+                Vec3.norm axis, angle
 
-        // desired accelerations
+        // rotation axis for turning towards target
+        let rollTarget = axisAngle Vec3.unitZ (- shipUp)
+
+        let pitchYawAxis, pitchYawAngle = axisAngle Vec3.unitY shipTarget
+        
+        // Try to reach the target angular velocity within the given horizon.
+        // The horizon is chosen so that we won't overshoot
         let horizon = 1.<s>
-        let omegaErrors = adjustedTargetOmegas - omegas
-        let targetAlphas = omegaErrors / horizon
 
-        printfn "%O %O" (omegaErrors * degPerRad) (targetAlphas * degPerRad)
-        targetAlphas
+        if pitchYawAngle > 0.05<deg> / degPerRad then
+
+            // only adjust roll within this deviation of the target orientation
+            let rollControlRange = 5.<deg>
+            let rollControlScale (deviation: float<deg>) = 1. / (1. + exp ((deviation - rollControlRange) / 1.<deg>))
+                        
+            // get actual available angular acceleration
+            let torquePos, torqueNeg = availableTorqueS.Value
+            let moi = moiS.Value
+            let accelPos, accelNeg = Inertia.angularAcceleration moi torquePos, Inertia.angularAcceleration moi torqueNeg
+        
+            // simplify acceleration treatment. Use slowest of both directions
+            let availableAcceleration = Vec3.zip min accelPos -accelNeg
+        
+            // rotational component along target axis
+            let existingPitchYawAngVel = Vec3.project shipAngVel pitchYawAxis
+            // rotational component that we don't want
+            let excessAngVel = shipAngVel - existingPitchYawAngVel
+            // compute available acceleration towards target
+            let pitchYawAccel = Vec3.project availableAcceleration pitchYawAxis
+
+            // how long does it take to reduce angular velocity to zero at max acceleration
+            let fullStopTime = Vec3.mag existingPitchYawAngVel / Vec3.mag pitchYawAccel
+                
+            let fullStopDistance = 0.5 * Vec3.mag existingPitchYawAngVel * fullStopTime
+        
+        
+            printfn "%.2f %O %.1f %.1f" horizon pitchYawAxis (pitchYawAngle * degPerRad) (Vec3.mag existingPitchYawAngVel * degPerRad)
+
+            // acceleration required for killing excess rotation
+            let killExcessAccel = excessAngVel / horizon
+
+            let desiredAccel = 
+                if pitchYawAngle < 0.0001<deg> / degPerRad then
+                    -existingPitchYawAngVel / horizon
+                else
+                    // at which initial speed can we stop right on target
+                    let optimalSpeed = sqrt (2./3. * pitchYawAngle * Vec3.mag pitchYawAccel * 0.9)
+
+                    let speedError = optimalSpeed - Vec3.mag existingPitchYawAngVel
+                    let optimalAccel = pitchYawAxis * speedError / horizon
+
+                    if debug then printfn "S %.3f AV %.3f E %.2f" fullStopTime (optimalSpeed * degPerRad) (speedError * degPerRad)
+                
+                    -optimalAccel
+        
+            - killExcessAccel + desiredAccel
+
+        else
+            -shipAngVel / horizon
 
 
     member val Mode = SteeringMode.KillRotation with get, set
@@ -210,7 +217,7 @@ type TorquePI() =
 
 /// Rocket steering in Atmosphere, based on the very well working kOS SteeringManager
 /// https://github.com/KSP-KOS/KOS/blob/develop/src/kOS/Control/SteeringManager.cs
-type AtmosphericSteering() =
+type KosSteering() =
     /// when to set steering input to zero
     let EPSILON = 1e-16
 
@@ -238,8 +245,21 @@ type AtmosphericSteering() =
         let phi =
             Vec3.angle vesselForward targetForward * (
                 if Vec3.angle vesselTop targetForward > 90.<deg> / degPerRad then -1. else 1.)
-        
-        let { vec3.x = phiPitch; y = phiRoll; z = phiYaw } = shipAngleToTarget input.targetForward input.targetTop
+
+        let targetForwardNoStarboard = Vec3.exclude targetForward vesselStarboard
+        let phiPitch =
+            Vec3.angle vesselForward targetForwardNoStarboard * (
+                if Vec3.angle vesselTop targetForwardNoStarboard > 90.<deg> / degPerRad then -1. else 1.)
+
+        let targetForwardNoTop = Vec3.exclude targetForward vesselTop
+        let phiYaw =
+            Vec3.angle vesselForward targetForwardNoTop * (
+                if Vec3.angle vesselStarboard targetForwardNoTop > 90.<deg> / degPerRad then -1. else 1.)
+                
+        let targetTopNoForward = Vec3.exclude targetTop vesselForward
+        let phiRoll =
+            Vec3.angle vesselTop targetTopNoForward * (
+                if Vec3.angle vesselStarboard targetTopNoForward > 90.<deg> / degPerRad then -1. else 1.)
         
         let maxOmega = this.MaxStoppingTime * Inertia.angularAcceleration input.momentOfInertia input.controlTorque
 
