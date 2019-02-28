@@ -12,10 +12,29 @@ open ANewDawn.Math
 open ANewDawn.Units
 open ANewDawn.Mission
 open ANewDawn
+open ANewDawn.Math.Lambert
 
 [<EntryPoint>]
 let main argv = 
-    use conn = new Connection()
-    use mission = new Mission(conn)
-    Launch.launch mission Launch.KerbinProfile
+    let kerbinMu = 3.5316000e12<m^3/s^2>
+    let p1 = Vec3.unitX * 700_000.<m>
+    let p2 = -p1  //(Vec3.unitX * cos (-135.<deg/rad> / degPerRad) + Vec3.unitZ * sin (-135.<deg/rad> / degPerRad)) * 685_000.<m> // Vec3.unitZ * 700_000.<m>
+    let result = Lambert.lambert p1 p2 -800.<s> 0 kerbinMu
+    match result with
+    | Solution (v1, v2) ->
+      printfn "V1 = %O    |V1| = %.1f" v1 (Vec3.mag v1)
+      printfn "V2 = %O    |V2| = %.1f" v2 (Vec3.mag v2)
+    | NoSolution ->
+      printfn "No solution"
+    | Failed ->
+      printfn "Failed"
+
+    //use conn = new Connection()
+    //use mission = new Mission(conn)
+    //// Launch.launch mission { Launch.KerbinProfile with MinTurnAlt = 500.<m> }
+    //let _transfer: Node = Maneuver.addHohmannNode mission Apsis.Apoapsis 100_000.<m>
+    //Maneuver.executeNext mission 30.<s>
+    //let _circ: Node = Maneuver.addCircularizationNode mission Apsis.Apoapsis
+    //Maneuver.executeNext mission 30.<s>
+
     0

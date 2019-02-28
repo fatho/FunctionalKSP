@@ -2,9 +2,10 @@
 
 open ANewDawn.Units
 open ANewDawn.Math
-open ANewDawn.Mechanics
+open ANewDawn.Math.Util
 open ANewDawn.Extensions
 open ANewDawn
+open KRPC.Client.Services.SpaceCenter
 
 /// Control inputs that are applied to the controlled vessel.
 type AttitudeControls = {
@@ -13,10 +14,12 @@ type AttitudeControls = {
     yaw: float;
 }
 
-/// Steering input in ship reference frame
-type SteeringTarget = {
+/// Steering input in some reference frame
+type ShipAttitude = {
+    /// The direction the front vessel should be pointing at
     forward: vec3<1>;
-    top: vec3<1>;
+    /// The direction the top of the vessel should be pointing at
+    top: option<vec3<1>>;
 }
 
 type TorquePI() =
@@ -50,8 +53,35 @@ type AttitudeController(torque: IStream<vec3<N m>>, momentOfInertia: IStream<vec
     member val LastPitchInput = 0. with get, set
     member val LastYawInput = 0. with get, set
     member val LastRollInput = 0. with get, set
+    
+    member this.UpdateForAngularVelocity(sampleTime: float<s>, pitchVel: float<rad/s>, rollVel: float<rad/s>, yawVel: float<rad/s>): vec3<1> =
+        let controlTorque = torque.Value
+        let moi = momentOfInertia.Value
+        let angularVel = angularVelocity.Value
 
-    member this.UpdatePrediction(sampleTime: float<s>, target: SteeringTarget): vec3<1> =
+        let tgtPitchTorque = this.PitchTorqueLoop.Update(sampleTime, angularVel.x,
+                                pitchVel, moi.x, controlTorque.x)
+        let tgtYawTorque = this.YawTorqueLoop.Update(sampleTime, angularVel.z,
+                                yawVel, moi.z, controlTorque.z)
+        let tgtRollTorque = this.RollTorqueLoop.Update(sampleTime, angularVel.y,
+                                rollVel, moi.y, controlTorque.y)
+                                
+        let snapToEpsilon v = if abs v < EPSILON then 0. else v
+
+        let clampPitch = 2. * max (abs this.LastPitchInput) 0.05
+        this.LastPitchInput <- snapToEpsilon <| clamp -clampPitch clampPitch (tgtPitchTorque / controlTorque.x)
+
+        let clampYaw = 2. * max (abs this.LastYawInput) 0.05
+        this.LastYawInput <- snapToEpsilon <| clamp -clampYaw clampYaw (tgtYawTorque / controlTorque.z)
+        
+        let clampRoll = 2. * max (abs this.LastRollInput) 0.05
+        this.LastRollInput <- snapToEpsilon <| clamp -clampRoll clampRoll (tgtRollTorque / controlTorque.y)
+
+        { x = this.LastPitchInput; y = this.LastRollInput; z = this.LastYawInput }
+
+    /// Update the steering controls based on the new time and target. The target must be given
+    /// in the vessel's reference frame.
+    member this.UpdateForAttitude(sampleTime: float<s>, target: ShipAttitude): vec3<1> =
         let vesselForward = Vec3.unitY
         let vesselStarboard = Vec3.unitX
         let vesselTop = - Vec3.unitZ
@@ -70,10 +100,13 @@ type AttitudeController(torque: IStream<vec3<N m>>, momentOfInertia: IStream<vec
             Vec3.angle vesselForward targetForwardNoTop * (
                 if Vec3.angle vesselStarboard targetForwardNoTop > 90.<deg> / degPerRad then -1. else 1.)
                 
-        let targetTopNoForward = Vec3.exclude target.top vesselForward
         let phiRoll =
-            Vec3.angle vesselTop targetTopNoForward * (
-                if Vec3.angle vesselStarboard targetTopNoForward > 90.<deg> / degPerRad then -1. else 1.)
+            match target.top with
+            | None -> 0.<rad>
+            | Some(top) ->
+                let targetTopNoForward = Vec3.exclude top vesselForward
+                Vec3.angle vesselTop targetTopNoForward * (
+                    if Vec3.angle vesselStarboard targetTopNoForward > 90.<deg> / degPerRad then -1. else 1.)
         
         let controlTorque = torque.Value
         let moi = momentOfInertia.Value
@@ -88,15 +121,12 @@ type AttitudeController(torque: IStream<vec3<N m>>, momentOfInertia: IStream<vec
         let tgtPitchOmega = this.PitchRateLoop.Update(sampleTime, -phiPitch, 0.<_>, maxOmega.x)
         let tgtYawOmega = this.YawRateLoop.Update(sampleTime, -phiYaw, 0.<_>, maxOmega.z)
         let tgtRollOmega =
-            if abs phi > this.RollControlRange / degPerRad then
+            if target.top.IsNone || abs phi > this.RollControlRange / degPerRad then
                 this.RollRateLoop.ResetI()
                 0.<rad/s>
             else
                 this.RollRateLoop.Update(sampleTime, -phiRoll, 0.<_>, maxOmega.y)
 
-        // NOTE: coordinate system is apaprently different from kOS, so this code requires some
-        // random negations.
-        // TODO: find out why
         let tgtPitchTorque = this.PitchTorqueLoop.Update(sampleTime, angularVel.x,
                                 tgtPitchOmega, moi.x, controlTorque.x)
         let tgtYawTorque = this.YawTorqueLoop.Update(sampleTime, angularVel.z,
@@ -116,3 +146,61 @@ type AttitudeController(torque: IStream<vec3<N m>>, momentOfInertia: IStream<vec
         this.LastRollInput <- snapToEpsilon <| clamp -clampRoll clampRoll (tgtRollTorque / controlTorque.y)
 
         { x = this.LastPitchInput; y = this.LastRollInput; z = this.LastYawInput }
+
+
+module AttitudeControl = 
+    open ANewDawn.Mission
+    open ANewDawn.StreamExtensions
+
+    /// Sends a sequence of steering commands based on the sequence of attitudes.
+    /// Every clock tick, the sequence is advanced, until it ends.
+    /// At the end of the sequence, the steering commands are reset to zero.
+    let loop (mission: Mission) (referenceFrame: ReferenceFrame) (attitudes: seq<ShipAttitude>) =
+        let ship = mission.ActiveVessel
+        use availableTorqueS = mission.Streams.UseStream<N m>(fun () -> ship.AvailableTorque)
+        use moiS = mission.Streams.UseStream<kg m^2>(fun () -> ship.MomentOfInertia)
+        use orbitalAngularVelocityS = mission.Streams.UseStream<rad/s>(fun () -> ship.AngularVelocity(ship.OrbitalReferenceFrame))
+
+        let combineTorques (pos: vec3<N m>, neg: vec3<N m>): vec3<N m> = Vec3.zip (fun a b -> min (abs a) (abs b)) pos neg
+        let transformAngVel av = -(Vec3.pack<rad/s> <| mission.SpaceCenter.TransformDirection(Vec3.unpack av, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
+
+        let controller = new AttitudeController(availableTorqueS.Map(combineTorques), moiS, orbitalAngularVelocityS.Map(transformAngVel))
+
+        for attitude in attitudes do
+            let shipTarget = Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack attitude.forward, referenceFrame, ship.ReferenceFrame)
+            let shipUp = Option.map (fun top -> Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack top, referenceFrame, ship.ReferenceFrame)) attitude.top
+            let controls = controller.UpdateForAttitude(mission.UniversalTime, { forward = shipTarget; top = shipUp })
+            ship.Control.Pitch <- float32U controls.x
+            ship.Control.Yaw <- float32U controls.z
+            ship.Control.Roll <- float32U controls.y
+            mission.Tick() |> ignore
+        
+        ship.Control.Pitch <- 0.f
+        ship.Control.Yaw <- 0.f
+        ship.Control.Roll <- 0.f
+        
+
+    /// Sends a sequence of steering commands based on the sequence of attitudes.
+    /// Every clock tick, the sequence is advanced, until it ends.
+    /// At the end of the sequence, the steering commands are reset to zero.
+    let loopAngVel (mission: Mission) (angVels: seq<vec3<rad/s>>) =
+        let ship = mission.ActiveVessel
+        use availableTorqueS = mission.Streams.UseStream<N m>(fun () -> ship.AvailableTorque)
+        use moiS = mission.Streams.UseStream<kg m^2>(fun () -> ship.MomentOfInertia)
+        use orbitalAngularVelocityS = mission.Streams.UseStream<rad/s>(fun () -> ship.AngularVelocity(ship.OrbitalReferenceFrame))
+
+        let combineTorques (pos: vec3<N m>, neg: vec3<N m>): vec3<N m> = Vec3.zip (fun a b -> min (abs a) (abs b)) pos neg
+        let transformAngVel av = -(Vec3.pack<rad/s> <| mission.SpaceCenter.TransformDirection(Vec3.unpack av, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
+
+        let controller = new AttitudeController(availableTorqueS.Map(combineTorques), moiS, orbitalAngularVelocityS.Map(transformAngVel))
+
+        for angVel in angVels do
+            let controls = controller.UpdateForAngularVelocity(mission.UniversalTime, angVel.x, angVel.y, angVel.z)
+            ship.Control.Pitch <- float32U controls.x
+            ship.Control.Yaw <- float32U controls.z
+            ship.Control.Roll <- float32U controls.y
+            mission.Tick() |> ignore
+        
+        ship.Control.Pitch <- 0.f
+        ship.Control.Yaw <- 0.f
+        ship.Control.Roll <- 0.f

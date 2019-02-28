@@ -45,14 +45,18 @@
     <None Include="Script.fsx" />
     <Content Include="packages.config" />
     <Compile Include="Units.fs" />
-    <Compile Include="Math.fs" />
+    <Compile Include="Math\Vec3.fs" />
+    <Compile Include="Math\Util.fs" />
+    <Compile Include="Math\Mechanics.fs" />
+    <Compile Include="Math\Lambert.fs" />
     <Compile Include="Extensions.fs" />
-    <Compile Include="Mechanics.fs" />
     <Compile Include="Streams.fs" />
-    <Compile Include="Mission.fs" />
+    <Compile Include="MIssion\Mission.fs" />
     <Compile Include="Control\PidLoop.fs" />
     <Compile Include="Control\AttitudeControl.fs" />
+    <Compile Include="Staging.fs" />
     <Compile Include="Launch.fs" />
+    <Compile Include="Maneuver.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core">

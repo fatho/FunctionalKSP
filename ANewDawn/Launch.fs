@@ -12,6 +12,7 @@ open ANewDawn.Extensions
 open ANewDawn.Math
 open ANewDawn.Mission
 open ANewDawn.Control
+open ANewDawn
     
 type Profile = {
     /// desired altitude of apoapsis [m]
@@ -45,9 +46,6 @@ let KerbinProfile: Profile = {
 let turnPitch profile (startAlt: float<m>) (currentAlt: float<m>) =
     90.<deg> - 90.<deg> * ((currentAlt - startAlt) / (profile.MaxTurnAlt - startAlt)) ** profile.TurnExponent;
 
-/// Determine whether we should activate the next stage
-let shouldStage (ship: Vessel) = ship.AvailableThrust < 0.1f
-
 let launch (mission: Mission) (profile: Profile) =
     let ship = mission.ActiveVessel
     if ship.Situation <> VesselSituation.Landed && ship.Situation <> VesselSituation.PreLaunch
@@ -58,16 +56,7 @@ let launch (mission: Mission) (profile: Profile) =
     let conn = ship.Connection
     let control = ship.Control
     let flight = ship.Flight(ship.SurfaceReferenceFrame);
-
-    let availableTorqueS = mission.Streams.UseStream<N m>(fun () -> ship.AvailableTorque)
-    let moiS = mission.Streams.UseStream<kg m^2>(fun () -> ship.MomentOfInertia)
-    let orbitalAngularVelocityS = mission.Streams.UseStream<rad/s>(fun () -> ship.AngularVelocity(ship.OrbitalReferenceFrame))
-
-    let combineTorques (pos: vec3<N m>, neg: vec3<N m>): vec3<N m> = Vec3.zip (fun a b -> min (abs a) (abs b)) pos neg
-    let transformAngVel av = -(Vec3.pack<rad/s> <| mission.SpaceCenter.TransformDirection(Vec3.unpack av, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
-
-    let steering = new AttitudeController(availableTorqueS.Map(combineTorques), moiS, orbitalAngularVelocityS.Map(transformAngVel))
-
+        
     control.Throttle <- 0.f
 
     use altitudeS = mission.Streams.UseStream<m>(fun () -> flight.MeanAltitude)
@@ -92,8 +81,6 @@ let launch (mission: Mission) (profile: Profile) =
         let upwards = cos pitchRad
         let sidewards = - sin pitchRad
         {x = upwards; y = cos azimuthRad * sidewards; z = sin azimuthRad * sidewards }
-        
-    let launchAlt = altitudeS.Value
             
     printfn "Launching in"
     for count in { 0 .. profile.Countdown - 1 } do
@@ -104,62 +91,51 @@ let launch (mission: Mission) (profile: Profile) =
             
     // Lift-off
     let stage () =
+        printfn "Staging!"
         control.ActivateNextStage() |> ignore
    
     printfn "Ignition"
     stage ()
-    
-    let steer fw up =
-        let shipTarget = Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack fw, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
-        let shipUp = Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack up, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
-        let controls = steering.UpdatePrediction(mission.UniversalTime, { forward = shipTarget; top = shipUp })
-        control.Pitch <- float32U controls.x
-        control.Yaw <- float32U controls.z
-        control.Roll <- float32U controls.y
 
-    // Go straight up until high enough and fast enough to start turning
-    // (Turning to early might result in accidental collisions with launch clamps
-    // or result in the vessel spinning out of control)
-    while altitudeS.Value < profile.MinTurnAlt || 
-           floatU airSpeedS.Value < profile.MinTurnSpeed do
+    AttitudeControl.loop mission ship.SurfaceReferenceFrame <| seq {
+        // Go straight up until high enough and fast enough to start turning
+        // (Turning to early might result in accidental collisions with launch clamps
+        // or result in the vessel spinning out of control)
+        while altitudeS.Value < profile.MinTurnAlt || 
+               floatU airSpeedS.Value < profile.MinTurnSpeed do
 
-        if shouldStage ship then
-            printfn "Staging!"
-            stage ()
+            if Staging.shouldStage ship then
+                stage ()
             
-        let fw = forwardAtPitch 89.9<deg> profile.LaunchAzimuth
-        let up = upAtPitch 89.9<deg> profile.LaunchAzimuth
+            let fw = forwardAtPitch 89.9<deg> profile.LaunchAzimuth
+            let up = upAtPitch 89.9<deg> profile.LaunchAzimuth
         
-        steer fw up
+            yield { forward = fw; top = Some(up) }
 
-    printfn "Starting gravity turn"
+        printfn "Starting gravity turn"
 
-    let turnStartAlt = altitudeS.Value
+        let turnStartAlt = altitudeS.Value
 
-    /// Perform the gravity turn maneuver by following a pre-defined curve
-    while apoapsisS.Value < profile.TargetApoapsis - 10.<m> ||
-            altitudeS.Value < profile.MaxTurnAlt do
-        if shouldStage ship then
-            printfn "Staging!"
-            stage ()
+        let throttlePid = new PidLoop<m, 1>(0.01</m>, 0.001</(m s)>, 0.<_>, 0., 1.)
+        throttlePid.Setpoint <- profile.TargetApoapsis
 
-        let apo = apoapsisS.Value
-        let throttle =
-            if apo > profile.TargetApoapsis
-            then 0.f
-            else min 1.f (float32 (profile.TargetApoapsis - apo) / 1000.f)
+        /// Perform the gravity turn maneuver by following a pre-defined curve
+        while apoapsisS.Value < profile.TargetApoapsis - 10.<m> ||
+                altitudeS.Value < profile.MaxTurnAlt do
+            if Staging.shouldStage ship then
+                stage ()
 
-        control.Throttle <- throttle
+            let apo = apoapsisS.Value
 
-        let desiredPitch = turnPitch profile turnStartAlt altitudeS.Value
+            control.Throttle <- float32U <| throttlePid.Update(mission.UniversalTime, apo)
+
+            let desiredPitch = turnPitch profile turnStartAlt altitudeS.Value
         
-        let fw = forwardAtPitch desiredPitch profile.LaunchAzimuth
-        let up = upAtPitch desiredPitch profile.LaunchAzimuth
-        steer fw up
+            let fw = forwardAtPitch desiredPitch profile.LaunchAzimuth
+            let up = upAtPitch desiredPitch profile.LaunchAzimuth
+            yield { forward = fw; top = Some(up) }
+    }
 
-    control.Pitch <- 0.f
-    control.Yaw <- 0.f
-    control.Roll <- 0.f
     control.Throttle <- 0.f
-
+    
     printfn "Reached space"

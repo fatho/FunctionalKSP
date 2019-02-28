@@ -1,6 +1,5 @@
-﻿namespace ANewDawn.Mechanics
+﻿namespace ANewDawn.Math
 
-open ANewDawn.Math
 open ANewDawn.Units
 
 /// Vis-viva equation (https://en.wikipedia.org/wiki/Vis-viva_equation)

@@ -29,6 +29,7 @@ type Mission(conn: Connection) =
     let streams = new Streams(conn)
     let clock = streams.UseStream<s>(fun () -> ksc.UT)
 
+    member val Connection = conn with get
     member val SpaceCenter = ksc with get
     member val Streams = streams with get
     member this.UniversalTime with get() = clock.Value
