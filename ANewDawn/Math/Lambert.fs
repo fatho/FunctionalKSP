@@ -48,6 +48,7 @@ type LambertResult =
 
 let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) (muC: float<m^3/s^2>): LambertResult =
     // initial values
+    let debug = false
 
     let tol = 1e-14
     let mutable bad = false
@@ -76,7 +77,7 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
         let dth = acos (clamp -1. 1. (Vec3.dot r1vec r2vec / mr2vec));
         if longway < 0 then 2. * pi - dth else dth
     
-    printfn "V = %.1f    r1 = %.1f   mr2 = %.1f   dth = %.1f" V r1 mr2vec (dth * degPerRad)
+    if debug then printfn "V = %.1f    r1 = %.1f   mr2 = %.1f   dth = %.1f" V r1 mr2vec (dth * degPerRad)
 
     // derived quantities
     let c      = sqrt (1. + square mr2vec - 2. * mr2vec * cos dth) // non-dimensional chord
@@ -87,7 +88,7 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
     let mcr      = Vec3.mag crossprd                      // magnitues thereof
     let nrmunit  = crossprd / mcr                         // unit vector thereof
     
-    printfn "c = %.3f  s = %.3f  a_min = %.3f  Lambda = %.3f mcr = %.3f" c s a_min Lambda mcr
+    if debug then printfn "c = %.3f  s = %.3f  a_min = %.3f  Lambda = %.3f mcr = %.3f" c s a_min Lambda mcr
 
     // Initial values
     // ---------------------------------------------------------
@@ -163,11 +164,11 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
         let a = a_min / (1. - x * x)
         let alfa, beta =
             if x < 1. then // ellipse
-                printfn "ellipse"
+                if debug then printfn "ellipse"
                 // make 100.4% sure it's in (-1 <= xx <= +1)
                 2. * acos (clamp -1. 1. x), float longway * 2. * asin (sqrt((s-c)/2./a));
             else // hyperbola
-                printfn "hyperbola"
+                if debug then printfn "hyperbola"
                 2. * acosh x, float longway * 2. * asinh (sqrt((s-c)/(-2.*a)))
 
         // evaluate the time of flight via Lagrange expression
@@ -177,7 +178,7 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
             else
                 -a*sqrt(-a)*((sinh(alfa) - alfa) - (sinh(beta) - beta))
 
-        printfn "alfa = %.1f beta = %.1f tof = %.1f a = %.1f" (alfa * degPerRad) (beta * degPerRad) tof a
+        if debug then printfn "alfa = %.1f beta = %.1f tof = %.1f a = %.1f" (alfa * degPerRad) (beta * degPerRad) tof a
 
         // new value of y
         let ynew =
@@ -260,9 +261,9 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
         let crsprd1 = Vec3.cross ih r1vec
         let crsprd2 = Vec3.cross ih r2vec
 
-        printfn "ih = %O cr1 = %O cr2 = %O" ih crsprd1 crsprd2
+        if debug then printfn "ih = %O cr1 = %O cr2 = %O" ih crsprd1 crsprd2
         
-        printfn "eta = %.3f   eta2 = %.3f   x = %.3f" eta eta2 x
+        if debug then printfn "eta = %.3f   eta2 = %.3f   x = %.3f" eta eta2 x
         
         // radial and tangential directions for departure velocity
         let Vr1 = 1. / eta / sqrt a_min * (2. * Lambda * a_min - Lambda - x*eta)

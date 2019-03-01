@@ -65,6 +65,45 @@ module Maneuver =
 
         node
 
+        
+    let addInterceptionNode (mission: Mission) (target: Orbit) =
+        let current = mission.ActiveVessel.Orbit
+        assert (current.Body.Name = target.Body.Name)
+
+        let body = current.Body
+        let now = mission.UniversalTime
+        let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
+        
+        let velocityAt (orbit: Orbit) (ut: float<s>) =
+            //let scale = sqrt (mu * orbit.SemiMajorAxis) / orbit.RadiusAt(ut)
+            //let E = orbit.EccentricAnomalyAtUT(ut)
+            //scale * { x = - sin E; y = sqrt (1 - square orbit.Eccentricity) * cos E; z = 0 }
+            let p1 = Vec3.pack <| orbit.PositionAt(float ut - 0.5, body.NonRotatingReferenceFrame)
+            let p2 = Vec3.pack <| orbit.PositionAt(float ut + 0.5, body.NonRotatingReferenceFrame)
+            orbit.OrbitalSpeedAt(float ut).As<m/s>() * Vec3.norm (p2 - p1)
+
+        let evaluate tDeparture tArrival =
+            let p1 = Vec3.pack <| current.PositionAt(tDeparture / 1.<s>, body.NonRotatingReferenceFrame)
+            let p2 = Vec3.pack <| target.PositionAt(tArrival / 1.<s>, body.NonRotatingReferenceFrame)
+            let result = Lambert.lambert p1 p2 (tArrival - tDeparture) 0 mu
+            match result with
+            | Lambert.Solution (v1, v2) -> 
+                let actualV1 = velocityAt current tDeparture
+                let actualV2 = velocityAt target tArrival
+                let dv1 = v1 - actualV1
+                let dv2 = actualV2 - v2
+                // Some (v1 - actualV1, actualV2 - v2)
+                Some (Vec3.mag dv1 + Vec3.mag dv2)
+            | _ -> None
+
+        
+        for dtDep in { 600.<s> .. 60.<s> .. 3600.<s> } do
+            for tFlight in { 600.<s> .. 60.<s> .. 1200.<s> } do
+                let dv = evaluate (now + dtDep) (now + dtDep + tFlight)
+                printfn "DP: %f   FL: %f  dV: %O" dtDep tFlight dv
+
+        ()
+
     /// Perform a maneuver that orients the vessel in the given direction, does not perform roll
     let orient (mission: Mission) (ref: ReferenceFrame) (direction: vec3<1>) (thresholdPos: float<deg>) (thresholdVel: float<deg/s>) (timeout: float<s>): float<deg> * float<deg/s> =
         let ship = mission.ActiveVessel
