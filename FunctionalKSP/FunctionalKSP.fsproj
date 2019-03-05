@@ -52,10 +52,11 @@
     <Compile Include="Control\Clock.fs" />
     <Compile Include="Control\PidLoop.fs" />
     <Compile Include="Control\Rocket.fs" />
-    <Compile Include="Launch.fs" />
     <Compile Include="Mission.fs" />
     <Compile Include="Mission\Maneuver.fs" />
     <Compile Include="Mission\Rules.fs" />
+    <Compile Include="Mission\AttitudeControl.fs" />
+    <Compile Include="Launch.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core">

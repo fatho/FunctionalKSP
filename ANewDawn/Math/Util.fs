@@ -14,6 +14,10 @@ module Util =
     
     let inline asinh x = log (x + sqrt (x * x + 1.))
 
-    let sinRad (angle: float<rad>) = sin (angle / 1.<rad>)
+    let inline sinRad (angle: float<rad>) = sin (angle / 1.<rad>)
 
-    let cosRad (angle: float<rad>) = cos (angle / 1.<rad>)
+    let inline cosRad (angle: float<rad>) = cos (angle / 1.<rad>)
+
+    let inline sinDeg (angle: float<deg>) = sinRad (angle / degPerRad)
+
+    let inline cosDeg (angle: float<deg>) = cosRad (angle / degPerRad)

@@ -5,6 +5,11 @@ open KRPC.Client.Services
 open KRPC.Client.Services.SpaceCenter
 open System
 
+open FunctionalKSP.Telemetry
+open FunctionalKSP.Units
+open System.Collections.Generic
+open FunctionalKSP.Control
+
 type MissionLogLevel =
      | Debug // only relevant during development
      | Info // infrequent status updates about the mission
@@ -20,61 +25,61 @@ type MissionLogLevel =
 
 type LogHandler = MissionLogLevel -> string -> unit
 
-type MissionEnv = {
-    conn: Connection;
-    ksc: SpaceCenter.Service;
-    logHandler: LogHandler
-}
+type RefCount(initial: int) =
+    let mutable count = initial
 
-type Mission<'a> = { runMission: MissionEnv -> 'a }
+    member this.AddRef(): unit =
+        count <- count + 1
 
-type MissionBuilder() =
-    member this.Bind<'a, 'b>(x: Mission<'a>, f: 'a -> Mission<'b>): Mission<'b> =
-        { runMission = fun env -> (f (x.runMission env)).runMission env }
-    member this.Delay<'a>(f: unit -> Mission<'a>): Mission<'a> = { runMission = fun env -> (f ()).runMission env }
-    member this.Return<'a>(x: 'a): Mission<'a> = { runMission = fun _env -> x }
-    member this.ReturnFrom<'a>(mission: Mission<'a>): Mission<'a> = mission
-    member this.Using<'a, 'b when 'a :> IDisposable>(resource: 'a, user: 'a -> Mission<'b>): Mission<'b> =
-        { runMission = fun env ->
-            use res = resource
-            (user res).runMission env
-        }
-    // This feels illegal coming from Haskell, but is required to make things work
-    // It's a mission that does nothing
-    member this.Zero(): Mission<unit> = { runMission = fun _env -> () }
+    /// Returns true if the last reference was removed
+    member this.RemoveRef(): bool =
+        if count > 0 then
+            count <- count - 1
+            count = 0
+        else
+            invalidOp "refcount is already zero"
 
-type MissionAbortException(reason: string) =
-    inherit Exception(sprintf "Mission aborted: %s" reason)
-
-module Mission =
-    let mission = new MissionBuilder()
-
-    let run (logHandler: LogHandler) (conn: Connection) (m: Mission<'a>) =
-        let ksc = conn.SpaceCenter()
-        let env = { conn = conn; ksc = ksc; logHandler = logHandler }
-        m.runMission env
-
-    /// Construct a mission primitive
-    let missionPrimitive (runPrimitive: MissionEnv -> 'a): Mission<'a> =
-        { runMission = runPrimitive }
-
-    /// Get the space center service of the current mission
-    let spaceCenter = missionPrimitive <| fun env -> env.ksc
+type RefCountedStream<'a, 'b>(stream: Stream<'a>, refcount: RefCount, map: 'a -> 'b) =
+    do refcount.AddRef()
     
-    /// Get the connection of the current mission
-    let connection = missionPrimitive <| fun env -> env.conn
+    interface IStream<'b> with
+        member this.Value with get() = stream.Get() |> map
 
-    /// Get the currently active vessel of this mission
-    let activeVessel = missionPrimitive <| fun env -> env.ksc.ActiveVessel
+    interface IDisposable with
+        member this.Dispose() =
+            if refcount.RemoveRef() then
+                stream.Remove()
 
-    /// Append a message to the mission log
-    let log (level: MissionLogLevel) (message: string) = missionPrimitive <| fun env -> env.logHandler level message
+/// Provides a high-level interface for a single kRPC session
+type Mission(conn: Connection) =
+    let ksc = conn.SpaceCenter()
+    let streams = new Dictionary<System.Linq.Expressions.Expression, RefCount>()
+    let refCountFor (expr: System.Linq.Expressions.Expression) =
+        if streams.ContainsKey(expr) then
+            streams.[expr]
+        else
+            let refcount = new RefCount(0)
+            streams.Add(expr, refcount)
+            refcount
 
-    /// Abort the mission
-    let abort (reason: string): Mission<'a> = 
-        missionPrimitive <| fun _ -> raise (new MissionAbortException(reason))
 
-module MissionLoggers =
-    let stdoutLogger (minLevel: MissionLogLevel): LogHandler = fun (level: MissionLogLevel) (message: string) ->
-        if level >= minLevel then
-            printfn "[%O] %s" level message
+    member val SpaceCenter = ksc with get
+    member val Clock = new Clock(conn, ksc) with get
+
+    member this.UseStream<[<Measure>] 'u>(expr: System.Linq.Expressions.Expression<float32<'u>>): RefCountedStream<float32, float32<'u>> =
+        let refcount = refCountFor expr
+        let stream = conn.AddStream(expr)
+        new RefCountedStream<float32, float32<'u>>(stream, refcount, LanguagePrimitives.Float32WithMeasure<'u>)
+    
+    member this.UseStream<[<Measure>] 'u>(expr: System.Linq.Expressions.Expression<float<'u>>): RefCountedStream<float, float<'u>> =
+        let refcount = refCountFor expr
+        let stream = conn.AddStream(expr)
+        new RefCountedStream<float, float<'u>>(stream, refcount, LanguagePrimitives.FloatWithMeasure<'u>)
+
+    member this.UseStream<'a>(expr: System.Linq.Expressions.Expression<'a>): RefCountedStream<'a, 'a> =
+        let refcount = refCountFor expr
+        let stream = conn.AddStream(expr)
+        new RefCountedStream<'a, 'a>(stream, refcount, id)
+
+    interface IDisposable with
+        member this.Dispose() = ()

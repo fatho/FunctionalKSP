@@ -50,7 +50,7 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
     // initial values
     let debug = false
 
-    let tol = 1e-14
+    let tol = 1e-18
     let mutable bad = false
 
     // work with non-dimensional units
@@ -195,7 +195,7 @@ let lambert (p1: vec3<m>) (p2: vec3<m>) (flightTime: float<s>) (numOrbits: int) 
         err <- abs (x1 - xnew)
 
         // escape clause
-        if iterations > 15 then
+        if iterations > 30 then
             bad <- true
 
 

@@ -6,6 +6,7 @@ open KRPC.Client.Services.SpaceCenter
 open ANewDawn.Units
 open ANewDawn.Extensions
 open ANewDawn.Math
+open ANewDawn.Math.Util
 open ANewDawn.Control
 open ANewDawn.Mission
 
@@ -13,6 +14,8 @@ type Apsis = Apoapsis | Periapsis
 
 
 module Maneuver =
+    open System
+
     /// Add a maneuver node for circularizing at the next following Apoapsis or Periapsis.
     let addCircularizationNode (mission: Mission) (apsis: Apsis): Node = 
         printfn "Computing circularization burn"
@@ -64,45 +67,171 @@ module Maneuver =
         let node = ship.Control.AddNode((mission.UniversalTime + eta) / 1.<s>, prograde=float32U deltaV / 1.f<m/s>)
 
         node
-
-        
-    let addInterceptionNode (mission: Mission) (target: Orbit) =
+                
+    let addInterceptionNode (mission: Mission) (target: Orbit) (departureTimeRange: float<s> * float<s>) (flightTimeRange: float<s> * float<s>) =
         let current = mission.ActiveVessel.Orbit
         assert (current.Body.Name = target.Body.Name)
 
         let body = current.Body
         let now = mission.UniversalTime
         let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
-        
-        let velocityAt (orbit: Orbit) (ut: float<s>) =
-            //let scale = sqrt (mu * orbit.SemiMajorAxis) / orbit.RadiusAt(ut)
-            //let E = orbit.EccentricAnomalyAtUT(ut)
-            //scale * { x = - sin E; y = sqrt (1 - square orbit.Eccentricity) * cos E; z = 0 }
-            let p1 = Vec3.pack <| orbit.PositionAt(float ut - 0.5, body.NonRotatingReferenceFrame)
-            let p2 = Vec3.pack <| orbit.PositionAt(float ut + 0.5, body.NonRotatingReferenceFrame)
-            orbit.OrbitalSpeedAt(float ut).As<m/s>() * Vec3.norm (p2 - p1)
+
+        let currentElems = current.OrbitalElements
+        let targetElems = target.OrbitalElements
 
         let evaluate tDeparture tArrival =
-            let p1 = Vec3.pack <| current.PositionAt(tDeparture / 1.<s>, body.NonRotatingReferenceFrame)
-            let p2 = Vec3.pack <| target.PositionAt(tArrival / 1.<s>, body.NonRotatingReferenceFrame)
+            let (p1, v1) = Kepler.stateVectors mu currentElems tDeparture
+            let (p2, v2) = Kepler.stateVectors mu targetElems tArrival
             let result = Lambert.lambert p1 p2 (tArrival - tDeparture) 0 mu
             match result with
-            | Lambert.Solution (v1, v2) -> 
-                let actualV1 = velocityAt current tDeparture
-                let actualV2 = velocityAt target tArrival
-                let dv1 = v1 - actualV1
-                let dv2 = actualV2 - v2
+            | Lambert.Solution (transV1, transV2) -> 
+                let dv1 = transV1 - v1
+                let dv2 = v2 - transV2
                 // Some (v1 - actualV1, actualV2 - v2)
-                Some (Vec3.mag dv1 + Vec3.mag dv2)
+                Some (dv1, dv2)
             | _ -> None
 
-        
-        for dtDep in { 600.<s> .. 60.<s> .. 3600.<s> } do
-            for tFlight in { 600.<s> .. 60.<s> .. 1200.<s> } do
-                let dv = evaluate (now + dtDep) (now + dtDep + tFlight)
-                printfn "DP: %f   FL: %f  dV: %O" dtDep tFlight dv
+        let deltaV (dv1, dv2) = Vec3.mag dv1 + Vec3.mag dv2
 
-        ()
+        // TODO: use orbital periods to guide search
+        let currentPeriod = Kepler.orbitalPeriod mu currentElems.semiMajorAxis
+        //let targetPeriod = Kepler.orbitalPeriod mu targetElems.semiMajorAxis
+        
+        let mutable minDV = Double.PositiveInfinity.As<m/s>()
+        let mutable minParams: float<s> * float<s> = 0.<_>, 0.<_>
+        let mutable minBurns: vec3<m/s> * vec3<m/s> = Vec3.zero<_>, Vec3.zero<_>
+                
+        printfn "Computing optimal interception trajectory"
+
+        let depTimStep = (snd departureTimeRange - fst departureTimeRange) / 200.
+        let flightTimeStep = (snd flightTimeRange - fst flightTimeRange) / 200.
+
+        for dtDep in { fst departureTimeRange .. depTimStep .. snd departureTimeRange } do
+            for tFlight in { fst flightTimeRange .. flightTimeStep .. snd flightTimeRange } do
+                let dv = evaluate (now + dtDep) (now + dtDep + tFlight)
+                match dv with
+                | None -> ()
+                | Some(dv1, dv2) ->
+                    let dv = deltaV (dv1, dv2)
+                    if dv < minDV then
+                        minDV <- dv
+                        minParams <- dtDep, tFlight
+                        minBurns <- dv1, dv2
+
+        printfn "Min: %f m/s at %O" minDV minParams
+        printfn "Burns: %O" minBurns
+        
+        let startTime = now + fst minParams
+        let rStart, vStart = Kepler.stateVectors mu currentElems startTime
+        let dirs = Kepler.maneuverDirections rStart vStart
+        let burnStart = fst minBurns
+
+        let vPrograde = Vec3.dot burnStart dirs.prograde
+        let vRadial = Vec3.dot burnStart dirs.radial
+        let vNormal = Vec3.dot burnStart dirs.normal
+        let f v = float32U (v / 1.<m/s>)
+
+        mission.ActiveVessel.Control.AddNode((now + fst minParams) / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial)
+
+    /// Add a node at the closest approach with the target for catching up with it.
+    let addCatchUpTargetNode (mission: Mission) (target: Orbit) =
+        let current = mission.ActiveVessel.Orbit
+        assert (current.Body.Name = target.Body.Name)
+
+        let body = current.Body
+        let now = mission.UniversalTime
+        let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
+
+        let currentElems = current.OrbitalElements
+        let targetElems = target.OrbitalElements
+
+        let tIntercept = current.TimeOfClosestApproach(target).As<s>()
+
+        let (p1, v1) = Kepler.stateVectors mu currentElems tIntercept
+        let (p2, v2) = Kepler.stateVectors mu targetElems tIntercept
+        let rvel = v2 - v1
+
+        printfn "eta = %.1f s  d = %.1f m rvel = %O   (%.1f)" (tIntercept - now) (Vec3.mag (p2 - p1)) rvel (Vec3.mag rvel)
+
+        let dirs = Kepler.maneuverDirections p1 v1
+
+        let vPrograde = Vec3.dot rvel dirs.prograde
+        let vRadial = Vec3.dot rvel dirs.radial
+        let vNormal = Vec3.dot rvel dirs.normal
+        let f v = float32U (v / 1.<m/s>)
+
+        let burnTimeFactor = 1. + (Vec3.mag v1 - Vec3.mag v2) / (2. * Vec3.mag v2)
+        
+        mission.ActiveVessel.Control.AddNode(tIntercept / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial), burnTimeFactor
+        
+    /// Add a maneuver node for deorbiting, reaching the given altitude at the desired surface position
+    let addDeorbitNode (mission: Mission) (latLon: float<deg> * float<deg>) (altitude: float<m>) (tMax: float<s>) : Node  =
+        let current = mission.ActiveVessel.Orbit
+        let body = current.Body
+        let now = mission.UniversalTime
+        let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
+
+        let rot0 = body.InitialRotation.As<rad>()
+        let rotVel = floatU <| body.RotationalSpeed.As<rad/s>()
+        let r = floatU <| body.EquatorialRadius.As<m>()
+
+        let targetPositionAtT t =
+            let (lat, lon) = latLon
+            let lonAtT = lon + (rot0 + t * rotVel) * degPerRad
+            let dir = { x = cosRad (lonAtT / degPerRad); y = sinRad (lat / degPerRad); z = sinRad (lonAtT / degPerRad) }
+            dir * (r + altitude)
+        
+        let currentElems = current.OrbitalElements
+        
+        let evaluate tDeparture tArrival =
+            let (p1, v1) = Kepler.stateVectors mu currentElems tDeparture
+            let p2 = targetPositionAtT tArrival
+            let result = Lambert.lambert p1 p2 (tArrival - tDeparture) 0 mu
+            match result with
+            | Lambert.Solution (transV1, _transV2) -> 
+                let dv = transV1 - v1
+                Some dv
+            | _ -> None
+            
+        // TODO: use orbital periods to guide search
+        let currentPeriod = Kepler.orbitalPeriod mu currentElems.semiMajorAxis
+        let orbMax = tMax / currentPeriod
+        //let targetPeriod = Kepler.orbitalPeriod mu targetElems.semiMajorAxis
+        
+        let mutable minDV = Double.PositiveInfinity.As<m/s>()
+        let mutable minParams: float<s> * float<s> = 0.<_>, 0.<_>
+        let mutable minBurn: vec3<m/s> = Vec3.zero<_>
+                
+        printfn "Computing optimal interception trajectory"
+
+        for depOrbits in { 0. .. 0.005 .. orbMax } do
+            for flightOrbits in { 0.005 .. 0.001 .. 1. } do
+                let dtDep = currentPeriod * depOrbits
+                let tFlight = currentPeriod * flightOrbits
+                let dv = evaluate (now + dtDep) (now + dtDep + tFlight)
+                match dv with
+                | None -> ()
+                | Some dv ->
+                    if Vec3.mag dv < minDV then
+                        minDV <- Vec3.mag dv
+                        minParams <- dtDep, tFlight
+                        minBurn <- dv
+
+        printfn "Min: %f at %O" minDV minParams
+        printfn "Burn: %O" minBurn
+
+        let startTime = now + fst minParams
+        let rStart, vStart = Kepler.stateVectors mu currentElems startTime
+        let prograde = Vec3.norm vStart
+        let radial = Vec3.norm rStart
+        let normal = Vec3.cross prograde radial
+
+        let vPrograde = Vec3.dot minBurn prograde
+        let vRadial = Vec3.dot minBurn radial
+        let vNormal = Vec3.dot minBurn normal
+        let f v = float32U (v / 1.<m/s>)
+
+        mission.ActiveVessel.Control.AddNode((now + fst minParams) / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial)
 
     /// Perform a maneuver that orients the vessel in the given direction, does not perform roll
     let orient (mission: Mission) (ref: ReferenceFrame) (direction: vec3<1>) (thresholdPos: float<deg>) (thresholdVel: float<deg/s>) (timeout: float<s>): float<deg> * float<deg/s> =
@@ -140,7 +269,11 @@ module Maneuver =
         }
         angVelS.Value * degPerRad
 
-    let executeNext (mission: Mission) (warpHeadroom: float<s>) =
+    type ExecutionMode = {
+        earlyStartFactor: float
+    }
+
+    let executeNextExt (mission: Mission) (warpHeadroom: float<s>) (mode: ExecutionMode) =
         printfn "Executing maneuver node"
 
         let ship = mission.ActiveVessel
@@ -148,7 +281,89 @@ module Maneuver =
         let node = control.Nodes.[0]
 
         // TODO: compute burn time across multiple stages
+        let currentStage = control.CurrentStage
 
+        let stageInfo stage =
+            let stageParts = query {
+                for part in ship.Parts.All do
+                where (part.DecoupleStage = stage - 1)
+                select part
+            }
+            let engines = query {
+                for part in stageParts do
+                let engine = part.Engine
+                where (engine <> null)
+                select (floatU <| engine.MaxVacuumThrust.As<N>(), floatU <| engine.VacuumSpecificImpulse.As<s>())
+            }
+            printfn "  Parts in stage %d" stage
+            if Seq.isEmpty engines then
+                None
+            else
+                for p in stageParts do
+                    printfn "    part %s, active %d, decouple %d" p.Name p.Stage p.DecoupleStage
+                let thrust = engines |> Seq.sumBy fst
+                let isp = thrust / Seq.sumBy (fun (f, isp) -> f / isp) engines
+                let propellantMass = query {
+                        for part in stageParts do
+                        sumBy (part.Mass.As<kg>() - part.DryMass.As<kg>())
+                    }
+
+                Some (thrust, isp, propellantMass)
+
+        let decoupledDryMass stage = query {
+                for part in ship.Parts.All do
+                where (part.DecoupleStage = stage)
+                sumBy (part.DryMass.As<kg>())
+            }
+
+        let rec computeBetterBurnTime (dv: float<m/s>) (m0: float<kg>) (stage: int): float<s> =
+            printfn "Stage %d:" stage
+            if stage = -1 then
+                0.<s>
+            else
+                let nextStage mfStage dvStage =
+                    let decoupledMass = decoupledDryMass (stage - 1)
+                    
+                    printfn "  dv in this stage = %.1f m/s" dvStage
+                    printfn "  decoupling %.1f kg" decoupledMass
+
+                    computeBetterBurnTime (dv - dvStage) (mfStage - decoupledMass) (stage - 1)
+
+                match stageInfo stage with
+                | Some(F, Isp, propellant) -> 
+                    let ve = Isp * 9.80665<m/s^2> // effective exhaust velocity
+                    printfn "  dv = %.1f m/s ; Isp = %.1f s ; ve = %.1f m/s ; F = %.1f" dv Isp ve F
+
+                    // Tsiolkovsky rocket equation solved for final mass
+                    let mf = Tsiolkovsky.finalMass dv ve m0
+
+                    // compute mass of exhaust per second
+                    let fuelFlow: float<kg/s> = F / ve
+
+                    let burnTimeStage = propellant / fuelFlow
+                
+                    printfn "  m0 = %.1f kg; mf = %.1f kg ; m_prop = %.1f kg ; flow = %.1f " m0 mf propellant fuelFlow
+                    printfn "  stage burnt out after %.1f s" burnTimeStage
+
+                    if m0 - mf <= propellant then
+                        // current stage is enough
+                        let burnTime = (m0 - mf) / fuelFlow
+
+                        printfn "  burn time %.1f s is enough" burnTime
+
+                        burnTime
+                    else
+                        // current stage is not enough
+                        let mfStage = m0 - propellant
+                        let dvStage = Tsiolkovsky.deltaV ve m0 mfStage
+                        
+                        let remaining = nextStage mfStage dvStage
+
+                        burnTimeStage + remaining
+                | None ->
+                    printfn "No engines in this stage"
+                    nextStage m0 0.<m/s>
+        
         // 2. Compute initial burn time
         let computeBurnTime dv =
             let Isp = float ship.SpecificImpulse * 1.<s>
@@ -169,13 +384,17 @@ module Maneuver =
 
             burnTime
 
-        let initialBurnTime = computeBurnTime (node.RemainingDeltaV * 1.<m/s>)
+        let initialBurnTime = computeBetterBurnTime (node.RemainingDeltaV.As<m/s>()) (floatU <| ship.Mass.As<kg>()) control.CurrentStage // computeBurnTime (node.RemainingDeltaV * 1.<m/s>)
 
+        
+        printfn "Overall burn time: %.1f s" initialBurnTime
         
         // 1. Orient ship along burn vector
 
         let nodeUT = node.UT.As<s>()
-        let burnStartT = nodeUT - initialBurnTime / 2.
+
+        let burnStartT = nodeUT - initialBurnTime * mode.earlyStartFactor
+
         let eta = burnStartT - mission.UniversalTime
         
         printfn "Orienting ship prograde"
@@ -192,7 +411,7 @@ module Maneuver =
 
         /// warp to node, but leave headroom for final orientation corrections
         if mission.UniversalTime < burnStartT - warpHeadroom then
-            mission.WarpTo(nodeUT - initialBurnTime / 2. - warpHeadroom)
+            mission.WarpTo(burnStartT - warpHeadroom)
         
         // final orientation corrections
         
@@ -223,7 +442,7 @@ module Maneuver =
                     ship.Control.ActivateNextStage() |> ignore
                     // recompute burn time
                     printfn "Recomputing burn"
-                    let newBurnTime = computeBurnTime (Vec3.mag burnVectorS.Value)
+                    let newBurnTime = computeBetterBurnTime (node.RemainingDeltaV.As<m/s>()) (floatU <| ship.Mass.As<kg>()) control.CurrentStage
                     printfn "Remaining burn time %.1f s" newBurnTime
 
                 let throttle = throttlePid.Update(mission.UniversalTime, - Vec3.mag burnVectorS.Value)
@@ -237,3 +456,42 @@ module Maneuver =
         // 5. Done
 
         node.Remove()
+        
+    let executeNext (mission: Mission) (warpHeadroom: float<s>) = executeNextExt mission warpHeadroom { earlyStartFactor = 0.5 }
+
+    let suicideBurn (mission: Mission) =
+        let ship = mission.ActiveVessel
+        let body = ship.Orbit.Body
+        let flight = ship.Flight(body.NonRotatingReferenceFrame)
+        
+        use altS = mission.Streams.UseStream<m>(fun () -> flight.SurfaceAltitude)
+        use thrustS = mission.Streams.UseStream<N>(fun () -> ship.AvailableThrust)
+        use massS = mission.Streams.UseStream<kg>(fun () -> ship.Mass)
+        use velV = mission.Streams.UseStream<m/s>(fun () -> flight.Velocity)
+        use posS = mission.Streams.UseStream<m>(fun () -> ship.Position(body.NonRotatingReferenceFrame))
+        use situationS = mission.Streams.UseStream(fun () -> ship.Situation)
+        
+        AttitudeControl.loop mission body.NonRotatingReferenceFrame <| seq {
+            let mutable waiting = true
+            while waiting do
+                let vertical = Vec3.norm posS.Value
+                let accel: float<m/s^2> = floatU thrustS.Value / floatU massS.Value
+                let vel = Vec3.dot vertical velV.Value
+                let burnDist: float<m> = 0.5 * vel * vel / accel
+                printfn "%.1f m        %.1f m    %.1f m/s    %.1f m/s^2" altS.Value burnDist vel accel
+                if burnDist > altS.Value + 10.<m> then
+                    ship.Control.Throttle <- 1.f
+                    waiting <- false
+                yield { forward = vertical; top = None }
+
+            while situationS.Value = VesselSituation.Flying do
+                let vertical = Vec3.norm posS.Value
+                let accel: float<m/s^2> = floatU thrustS.Value / floatU massS.Value
+                let vel = Vec3.dot vertical velV.Value
+                let burnDist: float<m> = 0.5 * vel * vel / accel
+                printfn "%.1f m        %.1f m    %.1f m/s    %.1f m/s^2" altS.Value burnDist vel accel
+                if vel >= 0.<_> then
+                    ship.Control.Throttle <- 0.f
+                yield { forward = vertical; top = None }
+        }
+

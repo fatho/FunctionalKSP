@@ -159,71 +159,71 @@ module ManeuverImpl =
         printfn "Done"
         node.Remove()
 
-module Maneuver =
-    /// Perform a maneuver that kills all rotation in the orbital reference frame.
-    /// Returns the residual angular velocity that was not killed.
-    let killRotation (threshold: float<deg/s>) (timeout: float<s>): Mission<vec3<deg/s>> = Mission.missionPrimitive <| fun env ->
-        let ship = env.ksc.ActiveVessel
-        use clock = new Clock(env.conn, env.ksc)
-        use steering = new ZeroGSteering(env.ksc, ship)
+//module Maneuver =
+//    /// Perform a maneuver that kills all rotation in the orbital reference frame.
+//    /// Returns the residual angular velocity that was not killed.
+//    let killRotation (threshold: float<deg/s>) (timeout: float<s>): Mission<vec3<deg/s>> = Mission.missionPrimitive <| fun env ->
+//        let ship = env.ksc.ActiveVessel
+//        use clock = new Clock(env.conn, env.ksc)
+//        use steering = new ZeroGSteering(env.ksc, ship)
 
-        let tMax = clock.Time + timeout
-        let mutable remainingAngularVel = infinity.As<deg/s>()
+//        let tMax = clock.Time + timeout
+//        let mutable remainingAngularVel = infinity.As<deg/s>()
 
-        while not (clock.Tick() >= tMax || remainingAngularVel <= threshold) do
-            steering.Update(clock.Time)
-            remainingAngularVel <- Vec3.mag steering.OrbitalAngularVelocity
+//        while not (clock.Tick() >= tMax || remainingAngularVel <= threshold) do
+//            steering.Update(clock.Time)
+//            remainingAngularVel <- Vec3.mag steering.OrbitalAngularVelocity
 
-        steering.OrbitalAngularVelocity
+//        steering.OrbitalAngularVelocity
    
     
-    /// Perform a maneuver that orients the vessel in the given direction
-    let orient (direction: vec3<1>) (ref: ReferenceFrame) (thresholdPos: float<deg>) (thresholdVel: float<deg/s>) (timeout: float<s>): Mission<float<deg> * float<deg/s>> = Mission.missionPrimitive <| fun env ->
-        let ship = env.ksc.ActiveVessel
-        use clock = new Clock(env.conn, env.ksc)
-        use steering = new ZeroGSteering(env.ksc, ship)
-        steering.Mode <- Rocket.LockTarget (direction, ref)
+//    /// Perform a maneuver that orients the vessel in the given direction
+//    let orient (direction: vec3<1>) (ref: ReferenceFrame) (thresholdPos: float<deg>) (thresholdVel: float<deg/s>) (timeout: float<s>): Mission<float<deg> * float<deg/s>> = Mission.missionPrimitive <| fun env ->
+//        let ship = env.ksc.ActiveVessel
+//        use clock = new Clock(env.conn, env.ksc)
+//        use steering = new ZeroGSteering(env.ksc, ship)
+//        steering.Mode <- Rocket.LockTarget (direction, ref)
 
-        //use steering = new KosSteering()
+//        //use steering = new KosSteering()
         
-        let tMax = clock.Time + timeout
+//        let tMax = clock.Time + timeout
         
-        let mutable remainingAngle = infinity.As<deg>()
-        let mutable remainingAngularVel = infinity.As<deg/s>()
+//        let mutable remainingAngle = infinity.As<deg>()
+//        let mutable remainingAngularVel = infinity.As<deg/s>()
 
-        while not (clock.Tick() >= tMax || (remainingAngle <= thresholdPos && remainingAngularVel <= thresholdVel)) do
-            let shipForward = Vec3.pack <| env.ksc.TransformDirection(Vec3.unpack Vec3.unitY, ship.ReferenceFrame, ref)
-            steering.Update(clock.Time)
-            //let shipAngVel = Vec3.pack<rad/s> <| env.ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame)
-            //let shipTarget = Vec3.pack <| env.ksc.TransformDirection(Vec3.unpack fw, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
-            //let shipUp = Vec3.pack <| env.ksc.TransformDirection(Vec3.unpack up, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
-            //let input = {
-            //    Rocket.sampleTime = Clock.Time;
-            //    Rocket.targetForward = shipTarget;
-            //    Rocket.targetTop = shipUp;
-            //    Rocket.controlTorque = combineTorques availableTorqueS.Value;
-            //    Rocket.momentOfInertia = moiS.Value;
-            //    Rocket.angularVelocity = shipAngVel;
-            //}
-            //let controls = steering.UpdatePrediction(input)
-            //control.Pitch <- float32U controls.x
-            //control.Yaw <- float32U controls.z
-            //control.Roll <- float32U controls.y
-            remainingAngle <- Vec3.angle shipForward direction * degPerRad
-            remainingAngularVel <- Vec3.mag steering.OrbitalAngularVelocity
+//        while not (clock.Tick() >= tMax || (remainingAngle <= thresholdPos && remainingAngularVel <= thresholdVel)) do
+//            let shipForward = Vec3.pack <| env.ksc.TransformDirection(Vec3.unpack Vec3.unitY, ship.ReferenceFrame, ref)
+//            steering.Update(clock.Time)
+//            //let shipAngVel = Vec3.pack<rad/s> <| env.ksc.TransformDirection(Vec3.unpack orbitalAngularVelocityS.Value, ship.OrbitalReferenceFrame, ship.ReferenceFrame)
+//            //let shipTarget = Vec3.pack <| env.ksc.TransformDirection(Vec3.unpack fw, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
+//            //let shipUp = Vec3.pack <| env.ksc.TransformDirection(Vec3.unpack up, ship.SurfaceReferenceFrame, ship.ReferenceFrame)
+//            //let input = {
+//            //    Rocket.sampleTime = Clock.Time;
+//            //    Rocket.targetForward = shipTarget;
+//            //    Rocket.targetTop = shipUp;
+//            //    Rocket.controlTorque = combineTorques availableTorqueS.Value;
+//            //    Rocket.momentOfInertia = moiS.Value;
+//            //    Rocket.angularVelocity = shipAngVel;
+//            //}
+//            //let controls = steering.UpdatePrediction(input)
+//            //control.Pitch <- float32U controls.x
+//            //control.Yaw <- float32U controls.z
+//            //control.Roll <- float32U controls.y
+//            remainingAngle <- Vec3.angle shipForward direction * degPerRad
+//            remainingAngularVel <- Vec3.mag steering.OrbitalAngularVelocity
 
-        remainingAngle, remainingAngularVel
+//        remainingAngle, remainingAngularVel
 
-    let circularize (apsis: Apsis) (warpHeadroom: float<s>): Mission<unit> = Mission.missionPrimitive <| fun env ->
-        let ship = env.ksc.ActiveVessel
-        use clock = new Clock(env.conn, env.ksc)
-        use steering = new ZeroGSteering(env.ksc, ship)
-        let _node = ManeuverImpl.addCircularizationNode clock ship apsis
-        ManeuverImpl.executeNext clock steering warpHeadroom
+//    let circularize (apsis: Apsis) (warpHeadroom: float<s>): Mission<unit> = Mission.missionPrimitive <| fun env ->
+//        let ship = env.ksc.ActiveVessel
+//        use clock = new Clock(env.conn, env.ksc)
+//        use steering = new ZeroGSteering(env.ksc, ship)
+//        let _node = ManeuverImpl.addCircularizationNode clock ship apsis
+//        ManeuverImpl.executeNext clock steering warpHeadroom
 
-    let deorbit (warpHeadroom: float<s>): Mission<unit> = Mission.missionPrimitive <| fun env ->
-        let ship = env.ksc.ActiveVessel
-        use clock = new Clock(env.conn, env.ksc)
-        use steering = new ZeroGSteering(env.ksc, ship)
-        let _node = ManeuverImpl.addHohmannNode clock ship Apsis.Periapsis 40_000.<m>
-        ManeuverImpl.executeNext clock steering warpHeadroom
+//    let deorbit (warpHeadroom: float<s>): Mission<unit> = Mission.missionPrimitive <| fun env ->
+//        let ship = env.ksc.ActiveVessel
+//        use clock = new Clock(env.conn, env.ksc)
+//        use steering = new ZeroGSteering(env.ksc, ship)
+//        let _node = ManeuverImpl.addHohmannNode clock ship Apsis.Periapsis 40_000.<m>
+//        ManeuverImpl.executeNext clock steering warpHeadroom

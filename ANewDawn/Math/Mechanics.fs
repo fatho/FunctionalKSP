@@ -20,6 +20,9 @@ module VisViva =
 module Tsiolkovsky =
     let finalMass (dv: float<m/s>) (exhaustVelocity: float<m/s>) (initialMass: float<kg>) =
         initialMass / exp (dv / exhaustVelocity)
+                
+    let deltaV (exhaustVelocity: float<m/s>) (initialMass: float<kg>) (finalMass: float<kg>) =
+        exhaustVelocity * log (initialMass / finalMass)
 
 module Inertia =
     let angularAcceleration (moi: vec3<kg*m^2>) (torque: vec3<N * m>): vec3<rad/s^2> =
@@ -39,6 +42,12 @@ module Kepler =
         inclination: float<rad>;
         meanAnomalyAtEpoch: float<rad>;
         epoch: float<s>;
+    }
+
+    type ManeuverDirections = {
+        prograde: vec3<1>;
+        radial: vec3<1>; // outwards
+        normal: vec3<1>
     }
 
     let stateVectors (mu: float<m^3/s^2>) (elements: OrbitalElements) (t: float<s>): vec3<m> * vec3<m/s> =
@@ -63,8 +72,6 @@ module Kepler =
         let vt = 2. * atan2 (sqrt (1. + e) * sinRad (Et / 2.)) (sqrt (1. - e) * cosRad (Et / 2.))
         let rt = a * (1. - e * cosRad Et)
 
-        printfn "M = %.3f E = %.3f v = %.3f r = %.3f" Mt Et vt rt
-
         let pos = rt * { x = cos vt; y = 0.; z = sin vt }
         let vel = sqrt (mu * a) / rt * { x = - sinRad Et; y = 0.; z = sqrt (1. - square e) * cosRad Et }
 
@@ -78,3 +85,51 @@ module Kepler =
 
         (r, v)
 
+
+    // Contains nasty edge cases, not needed at the moment
+    //let orbitalElements (mu: float<m^3/s^2>) (r: vec3<m>) (v: vec3<m/s>) (t: float<s>): OrbitalElements =
+    //    let h = Vec3.cross r v // orbital momentum
+    //    let eccentricityVector = Vec3.cross v h / mu - Vec3.norm r
+    //    let n = Vec3.cross Vec3.unitY h // pointing towards ascending node
+    //    let trueAnomaly =
+    //        if Vec3.dot r v >= 0.<_> then
+    //            Vec3.angle eccentricityVector r
+    //        else
+    //            2.<rad> * pi - Vec3.angle eccentricityVector r
+    //    let inclination = 1.<rad> * acos (h.y / Vec3.mag h) - 90.<deg> / degPerRad
+    //    let eccentricity = Vec3.mag eccentricityVector
+    //    let eccentricAnomaly = 2.<rad> * atan (tan (trueAnomaly / 2.<rad>) / sqrt ((1. + eccentricity) / (1. - eccentricity)))
+    //    let longitudeOfAscendingNode =
+    //        let angle = acos (n.x / Vec3.mag n) * 1.<rad>
+    //        if n.z >= 0.<_> then
+    //            angle
+    //        else
+    //            2.<rad> * pi - angle
+    //    let argumentOfPeriapsis =
+    //        if eccentricityVector.y >= 0. then
+    //            Vec3.angle n eccentricityVector
+    //        else
+    //            2.<rad> * pi - Vec3.angle n eccentricityVector
+    //    let meanAnomaly = eccentricAnomaly - eccentricity * sinRad eccentricAnomaly * 1.<rad>
+    //    let a = 1. / (2. / Vec3.mag r - Vec3.magSq v / mu)
+    //    { semiMajorAxis = a
+    //    ; eccentricity = eccentricity
+    //    ; argumentOfPeriapsis = argumentOfPeriapsis
+    //    ; longitudeOfAscendingNode = longitudeOfAscendingNode
+    //    ; inclination = inclination
+    //    ; meanAnomalyAtEpoch = meanAnomaly
+    //    ; epoch = t
+    //    }
+
+    let orbitalPeriod (mu: float<m^3/s^2>) (sma: float<m>): float<s> = 2. * Util.pi / sqrt (mu / Util.cube sma)
+
+    let maneuverDirections (pos: vec3<m>) (vel: vec3<m/s>): ManeuverDirections =
+        let prograde = Vec3.norm vel
+        let radialTmp = Vec3.norm pos
+        let normal = Vec3.norm (Vec3.cross prograde radialTmp)
+        let radial = -Vec3.cross prograde normal
+        { prograde = prograde
+        ; radial = radial
+        ; normal = normal
+        }
+        

@@ -13,6 +13,10 @@ open ANewDawn.Math
 open ANewDawn.Mission
 open ANewDawn.Control
 open ANewDawn
+open ANewDawn.Math
+open ANewDawn.Math
+open ANewDawn.Math
+open ANewDawn.Math
     
 type Profile = {
     /// desired altitude of apoapsis [m]
@@ -120,8 +124,8 @@ let launch (mission: Mission) (profile: Profile) =
         throttlePid.Setpoint <- profile.TargetApoapsis
 
         /// Perform the gravity turn maneuver by following a pre-defined curve
-        while apoapsisS.Value < profile.TargetApoapsis - 10.<m> ||
-                altitudeS.Value < profile.MaxTurnAlt do
+        while (apoapsisS.Value < profile.TargetApoapsis - 10.<m> ||
+                altitudeS.Value < profile.MaxTurnAlt) do
             if Staging.shouldStage ship then
                 stage ()
 
@@ -138,4 +142,58 @@ let launch (mission: Mission) (profile: Profile) =
 
     control.Throttle <- 0.f
     
-    printfn "Reached space"
+    printfn "Coasting to space"
+
+
+let launchToInclination (mission: Mission) (profile: Profile) (targetOrbit: Orbit) =
+    let ship = mission.ActiveVessel
+    let body = ship.Orbit.Body
+    assert (targetOrbit.Body = body)
+
+    let reference = body.NonRotatingReferenceFrame
+    let flight = ship.Flight(reference)
+    let shipLatitude = flight.Latitude.As<deg>() / degPerRad
+    let shipLongitude = flight.Longitude.As<deg>() / degPerRad
+
+    let targetInclination = 
+        let inclination = targetOrbit.Inclination.As<rad>()
+        if inclination < shipLatitude then
+            printfn "Cannot launch to inclination below latitude %.2f, adjusting inclination." (shipLatitude * degPerRad)
+            shipLatitude
+        else
+            inclination
+
+    // compute inertial (w/o accounting for body's rotation) launch azimuth
+    let inertialAzimuth = 1.<rad> * asin (Util.cosRad targetInclination / Util.cosRad shipLatitude)
+
+    // desired orbital velocity
+    let bodyRadius = floatU (body.EquatorialRadius.As<m>())
+    let orbitRadius = bodyRadius + profile.TargetApoapsis
+    let vOrbit = VisViva.orbitalVelocity (floatU <| body.GravitationalParameter.As<m^3/s^2>()) orbitRadius orbitRadius
+
+    // ship movement due to body rotation (assuming we are standing still)
+    let vEqRot = floatU (body.RotationalSpeed.As<rad/s>()) / Util.pi.As<rad>() * bodyRadius
+
+    // compute rotation-adjusted velocity vector
+    let vXRot = vOrbit * Util.sinRad inertialAzimuth - vEqRot * Util.cosRad shipLatitude
+    let vYRot = vOrbit * Util.cosRad inertialAzimuth
+
+    // find launch angle of rotated vector
+    let rotAzimuth = 90.<deg> - 1.<rad> * degPerRad * atan2 vYRot vXRot
+    let modifiedProfile = { profile with LaunchAzimuth = rotAzimuth }
+    printfn "Launch Azimuth: %.1f" rotAzimuth
+
+    // compute time when launch site intersects target orbit
+    // TODO: only works for equatorial launchsites, I think
+    let mutable targetLongitude = targetOrbit.LongitudeOfAscendingNode.As<rad>()
+    let shipOrbitalLongitude = shipLongitude + body.RotationAngle.As<rad>()
+
+    while targetLongitude < shipOrbitalLongitude do
+        targetLongitude <- targetLongitude + 360.<deg> / degPerRad
+    
+    let launchEta = (targetLongitude - shipOrbitalLongitude) / (floatU body.RotationalSpeed).As<rad/s>()
+    printfn "Launch ETA: %.0f s" launchEta
+    
+    mission.WarpTo(mission.UniversalTime + launchEta)
+
+    launch mission modifiedProfile
