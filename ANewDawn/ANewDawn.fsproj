@@ -57,7 +57,10 @@
     <Compile Include="Control\AttitudeControl.fs" />
     <Compile Include="Staging.fs" />
     <Compile Include="Launch.fs" />
-    <Compile Include="Maneuver.fs" />
+    <Compile Include="Maneuver\Orientation.fs" />
+    <Compile Include="Maneuver\Orbital.fs" />
+    <Compile Include="Maneuver\Interception.fs" />
+    <Compile Include="Maneuver\Execution.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core">

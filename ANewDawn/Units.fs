@@ -25,6 +25,10 @@ type kg = UnitSymbols.kg
 [<Measure>]
 type N = UnitSymbols.N
 
+/// Pascal
+[<Measure>]
+type Pa = UnitSymbols.Pa
+
 /// Degrees
 [<Measure>]
 type deg

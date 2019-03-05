@@ -33,6 +33,8 @@ type Profile = {
     MaxTurnAlt: float<m>;
     /// parameter describing the turn shap
     TurnExponent: float;
+    /// Maximum dynamic pressure
+    MaxQ: float<Pa>;
 }
     
 /// The Kerbin launch profile defines a 45 degree pitch at roughly 10km altitude.
@@ -43,7 +45,8 @@ let KerbinProfile: Profile = {
     MinTurnAlt = 700.<m>;
     MinTurnSpeed = 100.<m/s>;
     MaxTurnAlt = 70000.<m>;
-    TurnExponent = 0.4
+    TurnExponent = 0.4;
+    MaxQ = 1_000_000_000.<Pa>;
 }
     
 // Compute current turn angle as an exponentially shaped curve w.r.t altitude
@@ -66,6 +69,7 @@ let launch (mission: Mission) (profile: Profile) =
     use altitudeS = mission.Streams.UseStream<m>(fun () -> flight.MeanAltitude)
     use airSpeedS = mission.Streams.UseStream<m/s>(fun () -> flight.TrueAirSpeed)
     use apoapsisS = mission.Streams.UseStream<m>(fun () -> ship.Orbit.ApoapsisAltitude);
+    use dynamicPressureS = mission.Streams.UseStream<Pa>(fun () -> flight.DynamicPressure)
         
     // compass direction vector in surface reference frame of vessel, 0 deg is north, 90 deg is east
     let compassDir (angle: float<deg>) =
@@ -120,8 +124,11 @@ let launch (mission: Mission) (profile: Profile) =
 
         let turnStartAlt = altitudeS.Value
 
-        let throttlePid = new PidLoop<m, 1>(0.01</m>, 0.001</(m s)>, 0.<_>, 0., 1.)
-        throttlePid.Setpoint <- profile.TargetApoapsis
+        let apoThrottlePid = new PidLoop<m, 1>(0.01</m>, 0.001</(m s)>, 0.<_>, 0., 1.)
+        apoThrottlePid.Setpoint <- profile.TargetApoapsis
+        
+        let maxQThrottlePid = new PidLoop<Pa, 1>(0.01</Pa>, 0.001</(Pa s)>, 0.<_>, 0., 1.)
+        maxQThrottlePid.Setpoint <- profile.MaxQ
 
         /// Perform the gravity turn maneuver by following a pre-defined curve
         while (apoapsisS.Value < profile.TargetApoapsis - 10.<m> ||
@@ -131,7 +138,12 @@ let launch (mission: Mission) (profile: Profile) =
 
             let apo = apoapsisS.Value
 
-            control.Throttle <- float32U <| throttlePid.Update(mission.UniversalTime, apo)
+            let apoThrottle = float32U <| apoThrottlePid.Update(mission.UniversalTime, apo)
+            let qThrottle = float32U <| maxQThrottlePid.Update(mission.UniversalTime, floatU dynamicPressureS.Value)
+
+            printfn "AT: %.2f   QT: %.2f" apoThrottle qThrottle
+
+            control.Throttle <- min apoThrottle qThrottle
 
             let desiredPitch = turnPitch profile turnStartAlt altitudeS.Value
         

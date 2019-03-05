@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28307.421
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FunctionalKSP", "FunctionalKSP\FunctionalKSP.fsproj", "{F453C731-E5D2-4232-B48C-CFFDF6A8383D}"
-EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Orbiter", "Orbiter\Orbiter.fsproj", "{158EDEFD-0BC3-4D5B-9C44-440344CF66B6}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ANewDawn", "ANewDawn\ANewDawn.fsproj", "{81F658B1-F9AD-40B5-833A-EA32D852A01A}"
@@ -15,10 +13,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{F453C731-E5D2-4232-B48C-CFFDF6A8383D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F453C731-E5D2-4232-B48C-CFFDF6A8383D}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F453C731-E5D2-4232-B48C-CFFDF6A8383D}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F453C731-E5D2-4232-B48C-CFFDF6A8383D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{158EDEFD-0BC3-4D5B-9C44-440344CF66B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{158EDEFD-0BC3-4D5B-9C44-440344CF66B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{158EDEFD-0BC3-4D5B-9C44-440344CF66B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
