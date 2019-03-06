@@ -36,11 +36,10 @@ module Interception =
         let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
 
         let currentElems = current.OrbitalElements
-        let targetElems = target.OrbitalElements
 
         let evaluate times =
             let (p1, v1) = Kepler.stateVectors mu currentElems times.departureTime
-            let (p2, v2) = Kepler.stateVectors mu targetElems (times.departureTime + times.flightTime)
+            let (p2, v2) = targetAtTime (times.departureTime + times.flightTime)
             let result = Lambert.lambert p1 p2 times.flightTime 0 mu
             match result with
             | Lambert.Solution (transV1, transV2) -> 
