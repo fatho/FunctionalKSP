@@ -25,29 +25,23 @@ let rescueFromLko () =
 
     printfn "Launching rescue mission towards %s" tgt.Name
 
-    Launch.launch mission { Launch.KerbinProfile with MinTurnAlt = 500.<m>; MinTurnSpeed = 70.<m/s>; TargetApoapsis = 120_000.<m> }
+    Launch.launch mission { Launch.KerbinProfile with MinTurnAlt = 500.<m>; MinTurnSpeed = 70.<m/s>; TargetApoapsis = 140_000.<m> }
     let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Apoapsis
     Maneuver.Execution.executeNext mission 30.<s>
         
-    let _intercept: Node = Maneuver.Interception.addInterceptionNode mission tgt.Orbit (120.<s>, 6. * 60. * 60.<s>) (1. * 60.<s>, 20. * 60.<s>)
+    let _intercept: Option<Node> = Maneuver.Interception.addVesselInterceptionNode mission tgt.Orbit (120.<s>, 0.5 * 6. * 60. * 60.<s>) (8. * 60.<s>, 24. * 60.<s>)
 
     Maneuver.Execution.executeNext mission 30.<s>
 
     let _catchUp = Maneuver.Interception.addCatchUpTargetNode mission tgt.Orbit
-    Maneuver.Execution.executeNext mission 30.<s>
+    Maneuver.Execution.executeNextExt mission 30.<s> { earlyStartFactor = 1.0 }
 
     mission.ActiveVessel.Control.Lights <- true
 
     printfn "Reached target - waiting for boarding. Press enter to resume flight..."
     let _ = Console.ReadLine()
 
-    let _transfer: Node = Maneuver.Orbital.addHohmannNode mission Apsis.Periapsis 80_000.<m>
-    Maneuver.Execution.executeNext mission 30.<s>
-    
-    let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Periapsis
-    Maneuver.Execution.executeNext mission 30.<s>
-
-    let _deorbit = Maneuver.Orbital.addDeorbitNode mission (-0.10266804865356<deg>, -74.575385655446<deg>) 45_000.<m> (2. * 3600.<s>)
+    let _deorbit = Maneuver.Orbital.addDeorbitNode mission (-0.10266804865356<deg>, -74.575385655446<deg>) 45_000.<m> (mission.ActiveVessel.Orbit.Period.As<s>())
     Maneuver.Execution.executeNext mission 30.<s>
     
     printfn "Assume manual control!"
@@ -67,7 +61,7 @@ let rescueFromHko () =
 
     Maneuver.Execution.executeNext mission 30.<s>
    
-    let _intercept: Node = Maneuver.Interception.addInterceptionNode mission tgt.Orbit (300.<s>, 12. * 6. * 60. * 60.<s>) (0.8 * 60. * 60.<s>, 1.5 * 6. * 60. * 60.<s>)
+    let _intercept: Option<Node> = Maneuver.Interception.addVesselInterceptionNode mission tgt.Orbit (300.<s>, 12. * 6. * 60. * 60.<s>) (0.8 * 60. * 60.<s>, 1.5 * 6. * 60. * 60.<s>)
     Maneuver.Execution.executeNext mission 30.<s>
 
     let etaArrival = mission.ActiveVessel.Orbit.TimeOfClosestApproach(tgt.Orbit).As<s>() - mission.UniversalTime
@@ -78,7 +72,7 @@ let rescueFromHko () =
 
     let etaArrival = mission.ActiveVessel.Orbit.TimeOfClosestApproach(tgt.Orbit).As<s>() - mission.UniversalTime
         
-    let _halfWayCorrection: Node = Maneuver.Interception.addInterceptionNode mission tgt.Orbit (0.1 * etaArrival, 0.9 * etaArrival) (0.98 * etaArrival, 1.02 * etaArrival)
+    let _halfWayCorrection: Option<Node> = Maneuver.Interception.addVesselInterceptionNode mission tgt.Orbit (0.1 * etaArrival, 0.9 * etaArrival) (0.98 * etaArrival, 1.02 * etaArrival)
     
     printfn "Confirm course correction..."
     let _ = Console.ReadLine()
@@ -131,34 +125,36 @@ let launchMunScanner () =
 
     printfn "Launching %s" ship.Name
 
-    //let munProfile = { Launch.KerbinProfile with MinTurnAlt = 500.<m>; MinTurnSpeed = 70.<m/s>; MaxQ = 20_000.<Pa> }
-    //Launch.launch mission munProfile 
+    let munProfile = { Launch.KerbinProfile with MinTurnAlt = 500.<m>; MinTurnSpeed = 70.<m/s>; MaxQ = 20_000.<Pa> }
+    Launch.launch mission munProfile 
 
-    //let _circ: Node = Maneuver.addCircularizationNode mission Apsis.Apoapsis
-    //Maneuver.Execution.executeNext mission 30.<s>
+    let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Apoapsis
+    Maneuver.Execution.executeNext mission 30.<s>
     
     let mun = mission.SpaceCenter.Bodies.["Mun"]
     
-    let intercept: Node = Maneuver.Interception.addInterceptionNode mission mun.Orbit (300.<s>, 2. * 6. * 60. * 60.<s>) (0.8 * 60. * 60.<s>, 1.5 * 6. * 60. * 60.<s>)
-
-    //assert (intercept.Orbit.NextOrbit <> null)
-
-    //printfn "Fine tuning maneuver..."
+    let intercept: Option<Node> = Maneuver.Interception.addPlanetaryInterceptionNode mission mun (300.<s>, 2. * 6. * 60. * 60.<s>) (0.8 * 60. * 60.<s>, 1.5 * 6. * 60. * 60.<s>)
     
-    //let mutable tuning = true
-    //while tuning do
-    //    let peri = intercept.Orbit.NextOrbit.PeriapsisAltitude
+    Maneuver.Execution.executeNext mission 30.<s>
+
+    let munOrbit = ship.Orbit.NextOrbit
+    let etaMun = ship.Orbit.TimeToSOIChange.As<s>()
+
+    printfn "ETA to Mun: %.0f s" etaMun
+
+    mission.WarpTo(mission.UniversalTime + etaMun + 10.<s>)
     
-    //Maneuver.Execution.executeNext mission 30.<s>
+    // NOTE: for polar orbit, place ship exactly in front/behind Mun's SOI at some vertical offset from the orbit itself
 
-    //let munOrbit = ship.Orbit.NextOrbit
-    //let etaMun = ship.Orbit.TimeToSOIChange
+    let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Periapsis
+    Maneuver.Execution.executeNext mission 30.<s>
+    
+    ship.Control.Lights <- true // HACK: light switch toggles scanner
 
-    //mission.WarpTo(mission.UniversalTime + etaMun)
 
     ()
 
 [<EntryPoint>]
 let main argv = 
-    launchMunScanner ()
+    rescueFromLko ()
     0

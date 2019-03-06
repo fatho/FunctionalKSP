@@ -127,7 +127,7 @@ let launch (mission: Mission) (profile: Profile) =
         let apoThrottlePid = new PidLoop<m, 1>(0.01</m>, 0.001</(m s)>, 0.<_>, 0., 1.)
         apoThrottlePid.Setpoint <- profile.TargetApoapsis
         
-        let maxQThrottlePid = new PidLoop<Pa, 1>(0.01</Pa>, 0.001</(Pa s)>, 0.<_>, 0., 1.)
+        let maxQThrottlePid = new PidLoop<Pa, 1>(0.001</Pa>, 0.01</(Pa s)>, 0.<_>, 0., 1.)
         maxQThrottlePid.Setpoint <- profile.MaxQ
 
         /// Perform the gravity turn maneuver by following a pre-defined curve
@@ -140,8 +140,6 @@ let launch (mission: Mission) (profile: Profile) =
 
             let apoThrottle = float32U <| apoThrottlePid.Update(mission.UniversalTime, apo)
             let qThrottle = float32U <| maxQThrottlePid.Update(mission.UniversalTime, floatU dynamicPressureS.Value)
-
-            printfn "AT: %.2f   QT: %.2f" apoThrottle qThrottle
 
             control.Throttle <- min apoThrottle qThrottle
 

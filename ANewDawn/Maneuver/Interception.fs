@@ -12,71 +12,11 @@ open ANewDawn.Mission
 
 module Interception =
     open System
-
-    let addInterceptionNode (mission: Mission) (target: Orbit) (departureTimeRange: float<s> * float<s>) (flightTimeRange: float<s> * float<s>) =
-        let current = mission.ActiveVessel.Orbit
-        assert (current.Body.Name = target.Body.Name)
-
-        let body = current.Body
-        let now = mission.UniversalTime
-        let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
-
-        let currentElems = current.OrbitalElements
-        let targetElems = target.OrbitalElements
-
-        let evaluate tDeparture tArrival =
-            let (p1, v1) = Kepler.stateVectors mu currentElems tDeparture
-            let (p2, v2) = Kepler.stateVectors mu targetElems tArrival
-            let result = Lambert.lambert p1 p2 (tArrival - tDeparture) 0 mu
-            match result with
-            | Lambert.Solution (transV1, transV2) -> 
-                let dv1 = transV1 - v1
-                let dv2 = v2 - transV2
-                // Some (v1 - actualV1, actualV2 - v2)
-                Some (dv1, dv2)
-            | _ -> None
-
-        let deltaV (dv1, dv2) = Vec3.mag dv1 + Vec3.mag dv2
-
-        // TODO: use orbital periods to guide search
-        let currentPeriod = Kepler.orbitalPeriod mu currentElems.semiMajorAxis
-        //let targetPeriod = Kepler.orbitalPeriod mu targetElems.semiMajorAxis
-        
-        let mutable minDV = Double.PositiveInfinity.As<m/s>()
-        let mutable minParams: float<s> * float<s> = 0.<_>, 0.<_>
-        let mutable minBurns: vec3<m/s> * vec3<m/s> = Vec3.zero<_>, Vec3.zero<_>
-                
-        printfn "Computing optimal interception trajectory"
-
-        let depTimStep = (snd departureTimeRange - fst departureTimeRange) / 200.
-        let flightTimeStep = (snd flightTimeRange - fst flightTimeRange) / 200.
-
-        for dtDep in { fst departureTimeRange .. depTimStep .. snd departureTimeRange } do
-            for tFlight in { fst flightTimeRange .. flightTimeStep .. snd flightTimeRange } do
-                let dv = evaluate (now + dtDep) (now + dtDep + tFlight)
-                match dv with
-                | None -> ()
-                | Some(dv1, dv2) ->
-                    let dv = deltaV (dv1, dv2)
-                    if dv < minDV then
-                        minDV <- dv
-                        minParams <- dtDep, tFlight
-                        minBurns <- dv1, dv2
-
-        printfn "Min: %f m/s at %O" minDV minParams
-        printfn "Burns: %O" minBurns
-        
-        let startTime = now + fst minParams
-        let rStart, vStart = Kepler.stateVectors mu currentElems startTime
-        let dirs = Kepler.maneuverDirections rStart vStart
-        let burnStart = fst minBurns
-
-        let vPrograde = Vec3.dot burnStart dirs.prograde
-        let vRadial = Vec3.dot burnStart dirs.radial
-        let vNormal = Vec3.dot burnStart dirs.normal
-        let f v = float32U (v / 1.<m/s>)
-
-        mission.ActiveVessel.Control.AddNode((now + fst minParams) / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial)
+    
+    type LambertTimes = 
+        { departureTime: float<s> // universal time of departure
+        ; flightTime: float<s> // duration of the flight
+        }
 
     type LambertSolution =
         { vesselPosition: vec3<m>
@@ -85,11 +25,10 @@ module Interception =
         ; targetVelocity: vec3<m/s>
         ; departureVelocity: vec3<m/s>
         ; arrivalVelocity: vec3<m/s>
-        ; departureTime: float<s>
-        ; flightTime: float<s>
+        ; times: LambertTimes
         }
-    
-    let addLambertNode (mission: Mission) (target: Orbit) (departureTimes: seq<float<s>>) (flightTimes: seq<float<s>>) (evalSolution: LambertSolution -> float): Option<Node> =
+
+    let addLambertNode (mission: Mission) (target: Orbit) (times: seq<LambertTimes>) (targetAtTime: float<s> -> vec3<m> * vec3<m/s>) (evalSolution: LambertSolution -> float): Option<Node> =
         let current = mission.ActiveVessel.Orbit
         assert (current.Body.Name = target.Body.Name)
 
@@ -99,10 +38,10 @@ module Interception =
         let currentElems = current.OrbitalElements
         let targetElems = target.OrbitalElements
 
-        let evaluate tDeparture tArrival =
-            let (p1, v1) = Kepler.stateVectors mu currentElems tDeparture
-            let (p2, v2) = Kepler.stateVectors mu targetElems tArrival
-            let result = Lambert.lambert p1 p2 (tArrival - tDeparture) 0 mu
+        let evaluate times =
+            let (p1, v1) = Kepler.stateVectors mu currentElems times.departureTime
+            let (p2, v2) = Kepler.stateVectors mu targetElems (times.departureTime + times.flightTime)
+            let result = Lambert.lambert p1 p2 times.flightTime 0 mu
             match result with
             | Lambert.Solution (transV1, transV2) -> 
                 Some {
@@ -112,8 +51,7 @@ module Interception =
                     targetVelocity = v2
                     departureVelocity = transV1
                     arrivalVelocity = transV2
-                    departureTime = tDeparture
-                    flightTime = tArrival - tDeparture
+                    times = times
                 }
             | _ -> None
         
@@ -123,23 +61,27 @@ module Interception =
                 
         printfn "Computing optimal interception trajectory"
         
-        for tDep in departureTimes do
-            for tFlight in flightTimes do
-                let dv = evaluate tDep (tDep + tFlight)
-                match dv with
-                | None -> ()
-                | Some(solution) ->
-                    let score = evalSolution solution
-                    if score < minScore then
-                        bestSolution <- Some(solution)
-                        transferBurn <- solution.departureVelocity - solution.vesselVelocity
+        for time in times do
+            let dv = evaluate time
+            match dv with
+            | None -> ()
+            | Some(solution) ->
+                let score = evalSolution solution
+                if score < minScore then
+                    minScore <- score
+                    bestSolution <- Some(solution)
+                    transferBurn <- solution.departureVelocity - solution.vesselVelocity
 
         match bestSolution with
         | None ->
             printfn "No solution found!"
             None
         | Some(solution) -> 
-            let startTime = solution.departureTime
+            printfn "Best solution has score: %.1f" minScore
+            printfn "Departure time: %.1f" solution.times.departureTime
+            printfn "Flight time: %.1f" solution.times.flightTime
+
+            let startTime = solution.times.departureTime
             let rStart, vStart = Kepler.stateVectors mu currentElems startTime
             let dirs = Kepler.maneuverDirections rStart vStart
 
@@ -148,7 +90,7 @@ module Interception =
             let vNormal = Vec3.dot transferBurn dirs.normal
             let f v = float32U (v / 1.<m/s>)
 
-            let node = mission.ActiveVessel.Control.AddNode(solution.departureTime / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial)
+            let node = mission.ActiveVessel.Control.AddNode(startTime / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial)
             Some(node)
 
     /// Add a node at the closest approach with the target for catching up with it.
@@ -182,3 +124,67 @@ module Interception =
         
         mission.ActiveVessel.Control.AddNode(tIntercept / 1.<s>, prograde=f vPrograde, normal=f vNormal, radial=f vRadial), burnTimeFactor
         
+
+    let addVesselInterceptionNode (mission: Mission) (target: Orbit) (departureTimeRange: float<s> * float<s>) (flightTimeRange: float<s> * float<s>) =
+    
+        let now = mission.UniversalTime
+
+        let depTimStep = (snd departureTimeRange - fst departureTimeRange) / 2000.
+        let flightTimeStep = (snd flightTimeRange - fst flightTimeRange) / 200.
+
+        let times = seq {
+            for dtDep in { fst departureTimeRange .. depTimStep .. snd departureTimeRange } do
+                for tFlight in { fst flightTimeRange .. flightTimeStep .. snd flightTimeRange } do
+                    yield { departureTime = now + dtDep; flightTime = tFlight }
+        }
+
+        let body = target.Body
+        let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
+
+        let targetElems = target.OrbitalElements
+        let evaluateTarget time = Kepler.stateVectors mu targetElems time
+                
+        // score solutions by total delta-V needed for reaching the target orbit
+        let evaluateSolution solution =
+            let dv1 = solution.departureVelocity - solution.vesselVelocity
+            let dv2 = solution.targetVelocity - solution.arrivalVelocity
+            let totalDV = Vec3.mag dv1 + Vec3.mag dv2
+            // score is unitless
+            float totalDV
+
+        addLambertNode mission target times evaluateTarget evaluateSolution
+
+        
+    /// Intercepting another planet is more complicated, because we very much don't want to be in the exact same place as the target planet
+    /// at the arrival time. Ideally, we are a few hundred/thousand kilometers apart from its center of mass.
+    let addPlanetaryInterceptionNode (mission: Mission) (target: CelestialBody) (departureTimeRange: float<s> * float<s>) (flightTimeRange: float<s> * float<s>) =
+    
+        let now = mission.UniversalTime
+
+        let depTimStep = (snd departureTimeRange - fst departureTimeRange) / 200.
+        let flightTimeStep = (snd flightTimeRange - fst flightTimeRange) / 200.
+
+        let times = seq {
+            for dtDep in { fst departureTimeRange .. depTimStep .. snd departureTimeRange } do
+                for tFlight in { fst flightTimeRange .. flightTimeStep .. snd flightTimeRange } do
+                    yield { departureTime = now + dtDep; flightTime = tFlight }
+        }
+                
+        let centralBody = target.Orbit.Body
+        let mu = floatU <| centralBody.GravitationalParameter.As<m^3/s^2>()
+
+        let targetElems = target.Orbit.OrbitalElements
+
+        let evaluateTarget time =
+            let (r, v) = Kepler.stateVectors mu targetElems time
+            (r, v)
+                
+        // score solutions by total delta-V needed for reaching the target orbit
+        let evaluateSolution solution =
+            let dv1 = solution.departureVelocity - solution.vesselVelocity
+            let dv2 = solution.targetVelocity - solution.arrivalVelocity
+            let totalDV = Vec3.mag dv1 // + Vec3.mag dv2
+            // score is unitless
+            float totalDV
+
+        addLambertNode mission target.Orbit times evaluateTarget evaluateSolution
