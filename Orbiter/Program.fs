@@ -41,7 +41,7 @@ let rescueFromLko () =
     printfn "Reached target - waiting for boarding. Press enter to resume flight..."
     let _ = Console.ReadLine()
 
-    let _deorbit = Maneuver.Orbital.addDeorbitNode mission (-0.10266804865356<deg>, -74.575385655446<deg>) 45_000.<m> (mission.ActiveVessel.Orbit.Period.As<s>())
+    let _deorbit = Maneuver.Orbital.addDeorbitNode mission (-0.10266804865356<deg>, -74.575385655446<deg>) 45_000.<m> (60.<s>, mission.ActiveVessel.Orbit.Period.As<s>())
     Maneuver.Execution.executeNext mission 30.<s>
     
     printfn "Assume manual control!"
@@ -89,7 +89,7 @@ let rescueFromHko () =
     printfn "Reached target - waiting for boarding. Press enter to resume flight..."
     let _ = Console.ReadLine()
     
-    let _deorbit = Maneuver.Orbital.addDeorbitNode mission (-0.10266804865356<deg>, -74.575385655446<deg> + 12.<deg>) 45_000.<m> (6. * 3600.<s>)
+    let _deorbit = Maneuver.Orbital.addDeorbitNode mission (-0.10266804865356<deg>, -74.575385655446<deg> + 12.<deg>) 45_000.<m> (60.<s>, 6. * 3600.<s>)
     Maneuver.Execution.executeNext mission 30.<s>
     
     printfn "Assume manual control!"
@@ -151,10 +151,10 @@ let launchMunScanner () =
     
     ship.Control.Lights <- true // HACK: light switch toggles scanner
 
-
     ()
 
 [<EntryPoint>]
 let main argv = 
+    // MinmusResearchVessel.run ()
     rescueFromLko ()
     0

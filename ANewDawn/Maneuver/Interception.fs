@@ -28,9 +28,8 @@ module Interception =
         ; times: LambertTimes
         }
 
-    let addLambertNode (mission: Mission) (target: Orbit) (times: seq<LambertTimes>) (targetAtTime: float<s> -> vec3<m> * vec3<m/s>) (evalSolution: LambertSolution -> float): Option<Node> =
+    let addLambertNode (mission: Mission) (times: seq<LambertTimes>) (targetAtTime: float<s> -> vec3<m> * vec3<m/s>) (evalSolution: LambertSolution -> float): Option<Node> =
         let current = mission.ActiveVessel.Orbit
-        assert (current.Body.Name = target.Body.Name)
 
         let body = current.Body
         let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
@@ -125,6 +124,7 @@ module Interception =
         
 
     let addVesselInterceptionNode (mission: Mission) (target: Orbit) (departureTimeRange: float<s> * float<s>) (flightTimeRange: float<s> * float<s>) =
+        assert (mission.ActiveVessel.Orbit.Body.Name = target.Body.Name)
     
         let now = mission.UniversalTime
 
@@ -151,13 +151,15 @@ module Interception =
             // score is unitless
             float totalDV
 
-        addLambertNode mission target times evaluateTarget evaluateSolution
-
+        addLambertNode mission times evaluateTarget evaluateSolution
+   
         
     /// Intercepting another planet is more complicated, because we very much don't want to be in the exact same place as the target planet
     /// at the arrival time. Ideally, we are a few hundred/thousand kilometers apart from its center of mass.
     let addPlanetaryInterceptionNode (mission: Mission) (target: CelestialBody) (departureTimeRange: float<s> * float<s>) (flightTimeRange: float<s> * float<s>) =
     
+        // TODO: support more than just polar encounters
+
         let now = mission.UniversalTime
 
         let depTimStep = (snd departureTimeRange - fst departureTimeRange) / 200.
@@ -173,10 +175,20 @@ module Interception =
         let mu = floatU <| centralBody.GravitationalParameter.As<m^3/s^2>()
 
         let targetElems = target.Orbit.OrbitalElements
+        let rSoi = floatU <| target.SphereOfInfluence.As<m>()
 
         let evaluateTarget time =
             let (r, v) = Kepler.stateVectors mu targetElems time
-            (r, v)
+            let normal = Vec3.norm (Vec3.cross r v)
+            let prograde = Vec3.norm v
+            let radial = Vec3.cross prograde normal
+            let insertionAngle = -3.5<deg>
+            let progradeAngle = -12.<deg>
+            let pd = cosDeg insertionAngle * rSoi * prograde
+            let rd = cosDeg insertionAngle * rSoi * radial
+            let insertionPos =
+                sinDeg insertionAngle * rSoi * normal + pd * cosDeg progradeAngle + rd * sinDeg progradeAngle
+            (r + insertionPos, v)
                 
         // score solutions by total delta-V needed for reaching the target orbit
         let evaluateSolution solution =
@@ -186,4 +198,44 @@ module Interception =
             // score is unitless
             float totalDV
 
-        addLambertNode mission target.Orbit times evaluateTarget evaluateSolution
+        addLambertNode mission times evaluateTarget evaluateSolution
+        
+    /// Add a maneuver node for deorbiting, reaching the given altitude at the desired surface position
+    let addSurfaceInterceptionNode (mission: Mission) (latLon: float<deg> * float<deg>) (altitude: float<m>) ((tMin, tMax): float<s> * float<s>): Option<Node> =
+        let current = mission.ActiveVessel.Orbit
+        let body = current.Body
+        let now = mission.UniversalTime
+        let mu = floatU <| body.GravitationalParameter.As<m^3/s^2>()
+
+        let rot0 = body.InitialRotation.As<rad>()
+        let rotVel = floatU <| body.RotationalSpeed.As<rad/s>()
+        let r = floatU <| body.EquatorialRadius.As<m>()
+        
+        let currentElems = current.OrbitalElements
+        let currentPeriod = Kepler.orbitalPeriod mu currentElems.semiMajorAxis
+        let orbMin = tMin / currentPeriod
+        let orbMax = tMax / currentPeriod
+        let orbStep = (orbMax - orbMin) / 300.
+
+        let targetPositionAtT t =
+            let (lat, lon) = latLon
+            let lonAtT = lon + (rot0 + t * rotVel) * degPerRad
+            let dir = { x = cosRad (lonAtT / degPerRad); y = sinRad (lat / degPerRad); z = sinRad (lonAtT / degPerRad) }
+            let down = Vec3.unitY
+            let vel = r * 1.</rad> * rotVel * Vec3.cross dir down
+            dir * (r + altitude), vel
+        
+        let times = seq {
+            for depOrbits in { orbMin .. orbStep .. orbMax } do
+                for flightOrbits in { 0.005 .. 0.0005 .. 1. } do
+                    yield { departureTime = now + currentPeriod * depOrbits; flightTime = currentPeriod * flightOrbits }
+        }
+
+        
+        // score solutions by delta-V needed for deorbiting
+        let evaluateSolution solution =
+            let dv1 = solution.departureVelocity - solution.vesselVelocity
+            float (Vec3.mag dv1)
+
+        addLambertNode mission times targetPositionAtT evaluateSolution
+            
