@@ -47,6 +47,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Scripts\MinmusResearchVessel.fs" />
+    <Compile Include="Scripts\MunLander.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />
