@@ -17,6 +17,7 @@ open ANewDawn.Math
 open ANewDawn.Math
 open ANewDawn.Math
 open ANewDawn.Math
+open ANewDawn.Control.AttitudeControl
     
 type Profile = {
     /// desired altitude of apoapsis [m]
@@ -35,6 +36,8 @@ type Profile = {
     TurnExponent: float;
     /// Maximum dynamic pressure
     MaxQ: float<Pa>;
+    /// How to steer the vessel during launch
+    AttitudeControlProfile: AttitudeControlProfile;
 }
     
 /// The Kerbin launch profile defines a 45 degree pitch at roughly 10km altitude.
@@ -47,6 +50,7 @@ let KerbinProfile: Profile = {
     MaxTurnAlt = 70000.<m>;
     TurnExponent = 0.4;
     MaxQ = 1_000_000_000.<Pa>;
+    AttitudeControlProfile = AttitudeControlProfile.Medium;
 }
     
 // Compute current turn angle as an exponentially shaped curve w.r.t altitude

@@ -17,6 +17,7 @@ open ANewDawn.Math.Lambert
 open ANewDawn.Math.Kepler
 open ANewDawn.Maneuver
 open ANewDawn.Control
+open ANewDawn.Math
 
 
 let rescueFromLko () =
@@ -158,5 +159,19 @@ let launchMunScanner () =
 let main argv = 
     // MinmusResearchVessel.run ()
     // rescueFromLko ()
-    MunLander.run ()
+    // MunLander.run ()
+    let kerbinMu = 3.5316000e12<m^3/s^2>
+
+    let sidereal = 21_549.425<s>
+    let solar = 21_600.0<s>
+
+    let rKerbin = 600.e3<m>
+
+    printfn "%f" (Util.cbrt (Util.cube 13.))
+    printfn "%.0f" (Kepler.semiMajorAxisFromPeriod kerbinMu sidereal - rKerbin)
+    printfn "%.0f" (Kepler.semiMajorAxisFromPeriod kerbinMu solar - rKerbin)
+
+    let sma = 2863.33e3<m> + rKerbin
+
+    printfn "%.3f" (Kepler.orbitalPeriod kerbinMu sma)
     0

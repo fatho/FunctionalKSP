@@ -152,10 +152,12 @@ module AttitudeControl =
     open ANewDawn.Mission
     open ANewDawn.StreamExtensions
 
+    type AttitudeControlProfile = Heavy  | Medium | Light
+
     /// Sends a sequence of steering commands based on the sequence of attitudes.
     /// Every clock tick, the sequence is advanced, until it ends.
     /// At the end of the sequence, the steering commands are reset to zero.
-    let loop (mission: Mission) (referenceFrame: ReferenceFrame) (attitudes: seq<ShipAttitude>) =
+    let loopWithProfile (mission: Mission) (profile: AttitudeControlProfile) (referenceFrame: ReferenceFrame) (attitudes: seq<ShipAttitude>) =
         let ship = mission.ActiveVessel
         use availableTorqueS = mission.Streams.UseStream<N m>(fun () -> ship.AvailableTorque)
         use moiS = mission.Streams.UseStream<kg m^2>(fun () -> ship.MomentOfInertia)
@@ -165,6 +167,18 @@ module AttitudeControl =
         let transformAngVel av = -(Vec3.pack<rad/s> <| mission.SpaceCenter.TransformDirection(Vec3.unpack av, ship.OrbitalReferenceFrame, ship.ReferenceFrame))
 
         let controller = new AttitudeController(availableTorqueS.Map(combineTorques), moiS, orbitalAngularVelocityS.Map(transformAngVel))
+
+        match profile with
+        | Light -> ()
+        | Medium -> ()
+        | Heavy -> () // do
+            //// Make configuration adjustments for heavier vessel
+            //controller.MaxStoppingTime <- 5.<s>
+            //controller.PitchRateLoop.Kd <- 1.
+            //controller.YawRateLoop.Kd <- 1.
+            
+            //controller.PitchTorqueLoop.Ts <- 8.<s>
+            //controller.YawTorqueLoop.Ts <- 8.<s>
 
         for attitude in attitudes do
             let shipTarget = Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack attitude.forward, referenceFrame, ship.ReferenceFrame)
@@ -179,6 +193,11 @@ module AttitudeControl =
         ship.Control.Yaw <- 0.f
         ship.Control.Roll <- 0.f
         
+    /// Sends a sequence of steering commands based on the sequence of attitudes.
+    /// Every clock tick, the sequence is advanced, until it ends.
+    /// At the end of the sequence, the steering commands are reset to zero.
+    let loop (mission: Mission) (referenceFrame: ReferenceFrame) (attitudes: seq<ShipAttitude>) =
+        loopWithProfile mission AttitudeControlProfile.Medium referenceFrame attitudes
 
     /// Sends a sequence of steering commands based on the sequence of attitudes.
     /// Every clock tick, the sequence is advanced, until it ends.

@@ -9,6 +9,7 @@ open KRPC.Client.Services.SpaceCenter
 open System
 open ANewDawn.Control
 open ANewDawn.Math
+open ANewDawn.Control.AttitudeControl
 
 let run () =
     use conn = new Connection()
@@ -19,7 +20,7 @@ let run () =
     /// Launch
     let phase1 () =
         printfn "Launching %s into LKO (80 km)" ship.Name
-        Launch.launch mission Launch.KerbinProfile
+        Launch.launch mission { Launch.KerbinProfile with AttitudeControlProfile = AttitudeControlProfile.Heavy }
                 
         printfn "Extending solar panels"
         ship.Control.SolarPanels <- true
@@ -63,8 +64,38 @@ let run () =
          
     /// Manual control for landing and return
     let phase5 () =
-        printfn "Reached %s orbit, assume manual control! Press enter when ready to depart" mun.Name
-        let _ = Console.ReadLine()
+        printfn "Reached %s orbit, assume manual control!" mun.Name
+
+        let mutable commandMode = true
+
+        while commandMode do
+            printfn "Enter command: "
+            let command = Console.ReadLine()
+            match command with
+            | "cont" -> commandMode <- false
+            | "exec" -> Maneuver.Execution.executeNext mission 30.<s>
+            | "execearly" -> Maneuver.Execution.executeNextExt mission 30.<s> { earlyStartFactor = 1.0 }
+            | "intercept" -> do
+                let target = mission.SpaceCenter.TargetVessel
+                if target = null then
+                    printfn "No target!"
+                else
+                    let orbit = ship.Orbit
+                    let tMax =
+                        if orbit.NextOrbit <> null then
+                            orbit.TimeToSOIChange.As<s>()
+                        else
+                            Kepler.orbitalPeriod (floatU <| orbit.Body.GravitationalParameter.As<m^3/s^2>()) (orbit.SemiMajorAxis.As<m>())
+                    let node: Option<Node> = Maneuver.Interception.addVesselInterceptionNode mission target.Orbit (120.<s>, tMax) (120.<s>, tMax)
+                    if node.IsNone then
+                        printfn "No interception possible"
+            | "catch" -> do
+                let target = mission.SpaceCenter.TargetVessel
+                if target = null then
+                    printfn "No target!"
+                else
+                    Maneuver.Interception.addCatchUpTargetNode mission target.Orbit |> ignore
+            | _ -> printfn "Unknown command"
         
         printfn "Enter return maneuver and press enter to confirm!"
         let _ = Console.ReadLine()
@@ -103,5 +134,5 @@ let run () =
     //phase2 ()
     //phase3 ()
     //phase4 ()
-    //phase5 ()
-    phase6 ()
+    phase5 ()
+    // phase6 ()

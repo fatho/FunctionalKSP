@@ -121,7 +121,9 @@ module Kepler =
     //    ; epoch = t
     //    }
 
-    let orbitalPeriod (mu: float<m^3/s^2>) (sma: float<m>): float<s> = 2. * Util.pi / sqrt (mu / Util.cube sma)
+    let orbitalPeriod (mu: float<m^3/s^2>) (sma: float<m>): float<s> = 2. * Util.pi * sqrt (Util.cube sma / mu)
+
+    let semiMajorAxisFromPeriod (mu: float<m^3/s^2>) (period: float<s>): float<m> = cbrt (square (period / (2. * Util.pi)) * mu)
 
     let maneuverDirections (pos: vec3<m>) (vel: vec3<m/s>): ManeuverDirections =
         let prograde = Vec3.norm vel

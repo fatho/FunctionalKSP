@@ -8,6 +8,8 @@ module Util =
     let inline square<[<Measure>] 'u> (x: float<'u>): float<'u^2> = x * x
     let inline cube<[<Measure>] 'u> (x: float<'u>): float<'u^3> = x * x * x
 
+    let inline cbrt<[<Measure>] 'u> (x: float<'u^3>): float<'u> = LanguagePrimitives.FloatWithMeasure ((float x) ** (1./3.))
+
     let pi = System.Math.PI
 
     let inline acosh x = log (x + sqrt (x * x - 1.))
