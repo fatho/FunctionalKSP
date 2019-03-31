@@ -153,6 +153,7 @@ module AttitudeControl =
     open ANewDawn.StreamExtensions
 
     type AttitudeControlProfile = Heavy  | Medium | Light
+            
 
     /// Sends a sequence of steering commands based on the sequence of attitudes.
     /// Every clock tick, the sequence is advanced, until it ends.
@@ -168,18 +169,17 @@ module AttitudeControl =
 
         let controller = new AttitudeController(availableTorqueS.Map(combineTorques), moiS, orbitalAngularVelocityS.Map(transformAngVel))
 
+        // TODO: base control profile on available torque
+        printfn "Controlling attitude with profile %O" profile
         match profile with
         | Light -> ()
         | Medium -> ()
-        | Heavy -> () // do
-            //// Make configuration adjustments for heavier vessel
-            //controller.MaxStoppingTime <- 5.<s>
-            //controller.PitchRateLoop.Kd <- 1.
-            //controller.YawRateLoop.Kd <- 1.
+        | Heavy -> do
+            // Make configuration adjustments for heavier vessel
+            controller.MaxStoppingTime <- 20.<s>
+            //controller.PitchRateLoop.Kd <- 0.1
+            //controller.YawRateLoop.Kd <- 0.1
             
-            //controller.PitchTorqueLoop.Ts <- 8.<s>
-            //controller.YawTorqueLoop.Ts <- 8.<s>
-
         for attitude in attitudes do
             let shipTarget = Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack attitude.forward, referenceFrame, ship.ReferenceFrame)
             let shipUp = Option.map (fun top -> Vec3.pack <| mission.SpaceCenter.TransformDirection(Vec3.unpack top, referenceFrame, ship.ReferenceFrame)) attitude.top

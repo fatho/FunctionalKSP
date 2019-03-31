@@ -29,11 +29,18 @@ type RefCount(initial: int) =
         else
             invalidOp "refcount is already zero"
 
-type RefCountedStream<'a, 'b>(stream: Stream<'a>, refcount: RefCount, map: 'a -> 'b, holder: Dictionary<Object, RefCount>) =
+type RefCountedStream<'a, 'b when 'b: equality>(stream: Stream<'a>, refcount: RefCount, map: 'a -> 'b, holder: Dictionary<Object, RefCount>) =
     do refcount.AddRef()
 
     member val UnderlyingStream = stream with get
     member this.Value with get() = stream.Get() |> map
+
+    member this.WaitForChange() =
+        lock this.UnderlyingStream.Condition <| fun () ->
+            let current = this.Value
+            while this.Value = current do
+                this.UnderlyingStream.Wait()
+            this.Value
 
     interface IStream<'b> with
         member this.Value with get() = this.Value
@@ -49,6 +56,7 @@ type StreamId = StreamId of (string)
 type Streams(conn: Connection) =
     let streams = new Dictionary<Object, RefCount>()
     let refCountFor (stream: Object) =
+        // The Stream objects correctly implement Equals and GetHashCode
         if streams.ContainsKey(stream) then
             streams.[stream]
         else
@@ -76,7 +84,7 @@ type Streams(conn: Connection) =
         let refcount = refCountFor stream
         new RefCountedStream<_, _>(stream, refcount, (fun (a, b) -> Vec3.pack<'u> a, Vec3.pack<'u> b), streams)
 
-    member this.UseStream<'a>(expr: System.Linq.Expressions.Expression<Func<'a>>): RefCountedStream<'a, 'a> =
+    member this.UseStream<'a when 'a: equality>(expr: System.Linq.Expressions.Expression<Func<'a>>): RefCountedStream<'a, 'a> =
         let stream = conn.AddStream(expr)
         let refcount = refCountFor stream
         new RefCountedStream<_, _>(stream, refcount, id, streams)

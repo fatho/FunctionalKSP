@@ -56,10 +56,12 @@ let run () =
     let phase4 () =
         let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Maneuver.Periapsis
         Maneuver.Execution.executeNext mission 30.<s>
+        printfn "Assume manual control and press enter when ready to continue"
+        Console.ReadLine() |> ignore
          
     /// Execute return maneuver
     let phase5 () =
-        printfn "Enter manual course-correction and press enter to confirm!"
+        printfn "Enter return course and press enter to confirm!"
         let _ = Console.ReadLine()
         Maneuver.Execution.executeNext mission 30.<s>
 
@@ -70,6 +72,9 @@ let run () =
         //printfn "Press enter to confirm!"
         //let _ = Console.ReadLine()
         //Maneuver.Execution.executeNext mission 30.<s>
+        
+        printfn "Press enter to initiate descent sequence!"
+        let _ = Console.ReadLine()
 
         let flight = ship.Flight()
         use altitudeS = mission.Streams.UseStream<m>(fun () -> flight.SurfaceAltitude)
@@ -90,9 +95,9 @@ let run () =
         ship.Control.Parachutes <- true
 
 
-    // phase1 ()
-    // phase2 ()
-    // phase3 ()
-    // phase4 ()
-    // phase5 ()
+    phase1 ()
+    phase2 ()
+    phase3 ()
+    phase4 ()
+    phase5 ()
     phase6 ()

@@ -51,14 +51,28 @@ module Orbital =
             | Periapsis -> (ship.Orbit.TimeToApoapsis * 1.<s>, ship.Orbit.Apoapsis * 1.<m>)
             | Apoapsis -> (ship.Orbit.TimeToPeriapsis * 1.<s>, ship.Orbit.Periapsis * 1.<m>)
 
-        printfn "Next %s in %.1f s at %.0f m" (apsis.ToString()) eta radius
+        printfn "Maneuver %.1f s at %.0f m" eta radius
 
         let mu = float ship.Orbit.Body.GravitationalParameter * 1.<m^3/s^2>
+        let bodyR = floatU (ship.Orbit.Body.EquatorialRadius.As<m>())
         let currentSma = ship.Orbit.SemiMajorAxis * 1.<m>
-        let newSma = (radius + floatU (ship.Orbit.Body.EquatorialRadius.As<m>()) + targetAlt) / 2.
+        let newSma = (radius + bodyR + targetAlt) / 2.
+        let currentAlt =
+            match apsis with
+            | Apoapsis -> ship.Orbit.Apoapsis.As<m>() - bodyR
+            | Periapsis -> ship.Orbit.Periapsis.As<m>() - bodyR
+        let oldSma = (radius + bodyR + currentAlt) / 2.
+
+        printfn "Cur SMA: %.0f m" currentSma
+        printfn "Old SMA: %.0f m" oldSma
+        printfn "New SMA: %.0f m" newSma
     
         let actualVelocity = VisViva.orbitalVelocity mu radius currentSma 
         let desiredVelocity = VisViva.orbitalVelocity mu radius newSma
+                
+        printfn "Actual vel : %.0f m/s" actualVelocity
+        printfn "Desired vel: %.0f m/s" desiredVelocity
+
         let deltaV = desiredVelocity - actualVelocity
 
         printfn "Required deltaV is %.1f m/s" deltaV

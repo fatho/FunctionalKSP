@@ -33,7 +33,7 @@ type Mission(conn: Connection) =
     member val SpaceCenter = ksc with get
     member val Streams = streams with get
     member this.UniversalTime with get() = clock.Value
-    member this.ActiveVessel with get() = ksc.ActiveVessel
+    member this.ActiveVessel with get() = ksc.ActiveVessel and set vessel = ksc.ActiveVessel <- vessel
     
     /// Blockingly warp to the specified time
     member this.WarpTo(ut: float<s>) =
@@ -52,3 +52,32 @@ type Mission(conn: Connection) =
     interface IDisposable with
         member this.Dispose() =
             (clock :> IDisposable).Dispose()
+
+type Time(ut: float<s>) =
+    let seconds = int ut
+    let onlySeconds = seconds % 60
+    let minutes = seconds / 60
+    let onlyMinutes = minutes % 60
+    let hours = minutes / 60
+    let onlyHours = hours % 6
+    let days = hours / 6
+    let onlyDays = days % 426
+    let years = days / 426
+
+    member val Seconds = onlySeconds with get
+    member val Minutes = onlyMinutes with get
+    member val Hours = onlyHours with get
+    member val Days = onlyDays with get
+    member val Years = years with get
+        
+    member this.ToString(shortestPossible: bool) =
+        if shortestPossible && (this.Years = 0) then
+            if this.Days = 0 then
+                sprintf "%02d:%02d:%02d" this.Hours this.Minutes this.Seconds
+            else
+                sprintf "%dd %02d:%02d:%02d" this.Days this.Hours this.Minutes this.Seconds
+        else
+            sprintf "%dy %dd %02d:%02d:%02d" this.Years this.Days this.Hours this.Minutes this.Seconds
+
+    override this.ToString() =
+        this.ToString(true)

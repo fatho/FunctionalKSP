@@ -105,23 +105,52 @@ let launch (mission: Mission) (profile: Profile) =
     let stage () =
         printfn "Staging!"
         control.ActivateNextStage() |> ignore
-   
+
+    let mutable stagingCheckCounter = 0
+    let checkForStaging () = 
+        stagingCheckCounter <- stagingCheckCounter + 1
+        if stagingCheckCounter >= 5 then
+            stagingCheckCounter <- 0
+            if  not (Staging.hasThrust ship) || Staging.hasFlameout ship then
+                stage ()
+
+                
+    let controlProfile =
+        if ship.Mass.As<kg>() > 200_000.f<kg> then
+            AttitudeControl.Heavy
+        else
+            AttitudeControl.Medium
+
     printfn "Ignition"
     stage ()
+    
+    // If the launch clamps are still attached, wait until we reach 90% of maximum thrust
+    let clampsStillAttached = ship.Parts.LaunchClamps.Count > 0
+    if clampsStillAttached then
+        printfn "Clamps still attached, waiting for thrust"
+        use availableThrust = mission.Streams.UseStream<N>(fun () -> ship.AvailableThrust)
+        use thrust = mission.Streams.UseStream<N>(fun () -> ship.Thrust)
 
-    AttitudeControl.loop mission ship.SurfaceReferenceFrame <| seq {
+        while thrust.Value < 0.9f * availableThrust.Value do
+            control.Throttle <- 1.f
+            mission.Tick() |> ignore
+        printfn "Detaching clamps"
+        for clamp in ship.Parts.LaunchClamps do
+            clamp.Release()
+
+    AttitudeControl.loopWithProfile mission controlProfile ship.SurfaceReferenceFrame <| seq {
         // Go straight up until high enough and fast enough to start turning
         // (Turning to early might result in accidental collisions with launch clamps
         // or result in the vessel spinning out of control)
         while altitudeS.Value < profile.MinTurnAlt || 
                floatU airSpeedS.Value < profile.MinTurnSpeed do
 
-            if Staging.shouldStage ship then
-                stage ()
+            checkForStaging ()
             
             let fw = forwardAtPitch 89.9<deg> profile.LaunchAzimuth
             let up = upAtPitch 89.9<deg> profile.LaunchAzimuth
         
+            control.Throttle <- 1.f
             yield { forward = fw; top = Some(up) }
 
         printfn "Starting gravity turn"
@@ -137,8 +166,7 @@ let launch (mission: Mission) (profile: Profile) =
         /// Perform the gravity turn maneuver by following a pre-defined curve
         while (apoapsisS.Value < profile.TargetApoapsis - 10.<m> ||
                 altitudeS.Value < profile.MaxTurnAlt) do
-            if Staging.shouldStage ship then
-                stage ()
+            checkForStaging ()
 
             let apo = apoapsisS.Value
 

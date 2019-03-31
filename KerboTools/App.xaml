@@ -1,0 +1,92 @@
+﻿<Application x:Class="KerboTools.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:KerboTools"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <Style TargetType="Control">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style TargetType="Window">
+            <Setter Property="Background" Value="#2F4251" />
+        </Style>
+        <Style x:Key="BaseTextStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style x:Key="StatusButton" TargetType="ToggleButton">
+            <Setter Property="Margin" Value="2,2,2,2" />
+            <Setter Property="Background" Value="DarkRed" />
+            <Setter Property="BorderBrush" Value="DarkGray" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <Border x:Name="Background" CornerRadius="3" Background="White" BorderThickness="{TemplateBinding BorderThickness}" BorderBrush="{TemplateBinding BorderBrush}">
+                                <Grid Background="{TemplateBinding Background}"  Margin="1">
+                                    <Border Opacity="0"  x:Name="BackgroundAnimation" Background="#FF448DCA" />
+                                </Grid>
+                            </Border>
+                            <ContentPresenter
+                              x:Name="contentPresenter"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              Margin="{TemplateBinding Padding}"/>
+                            <Rectangle x:Name="DisabledVisualElement" RadiusX="3" RadiusY="3" Fill="#FFFFFFFF" Opacity="0" IsHitTestVisible="false" />
+                            <Rectangle x:Name="FocusVisualElement" RadiusX="2" RadiusY="2" Margin="1" Stroke="#FF6DBDD1" StrokeThickness="1" Opacity="0" IsHitTestVisible="false" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="DarkGreen" />
+                </Trigger>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="White" />
+                </Trigger>
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsMouseOver" Value="True" />
+                        <Condition Property="IsChecked" Value="True" />
+                    </MultiTrigger.Conditions>
+                    <MultiTrigger.Setters>
+                        <Setter Property="Background" Value="Green" />
+                    </MultiTrigger.Setters>
+                </MultiTrigger>
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsMouseOver" Value="True" />
+                        <Condition Property="IsChecked" Value="False" />
+                    </MultiTrigger.Conditions>
+                    <MultiTrigger.Setters>
+                        <Setter Property="Background" Value="Red" />
+                    </MultiTrigger.Setters>
+                </MultiTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="GaugeStyle" TargetType="ProgressBar">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="DarkGreen" />
+            <Style.Triggers>
+                <Trigger Property="Maximum" Value="0">
+                    <Setter Property="Foreground" Value="Transparent" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="LabelStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+            <Setter Property="Foreground" Value="LightGray" />
+        </Style>
+        <Style x:Key="ValueStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}"/>
+    </Application.Resources>
+</Application>

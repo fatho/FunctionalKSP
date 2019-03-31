@@ -12,6 +12,7 @@ open ANewDawn.Mission
 
 module Execution =
     open ANewDawn
+    open ANewDawn.Staging
 
     /// Perform a maneuver that orients the vessel in the given direction, does not perform roll
     let orient (mission: Mission) (ref: ReferenceFrame) (direction: vec3<1>) (thresholdPos: float<deg>) (thresholdVel: float<deg/s>) (timeout: float<s>): float<deg> * float<deg/s> =
@@ -25,8 +26,13 @@ module Execution =
         
         let mutable remainingAngle = infinity.As<deg>()
         let mutable remainingAngularVel = infinity.As<deg/s>()
+        let controlProfile =
+            if ship.Mass.As<kg>() > 30_000.f<kg> then
+                AttitudeControl.Heavy
+            else
+                AttitudeControl.Medium
 
-        AttitudeControl.loop mission ref <| seq {
+        AttitudeControl.loopWithProfile mission controlProfile ref <| seq {
             while not (mission.UniversalTime >= tMax || (remainingAngle <= thresholdPos && remainingAngularVel <= thresholdVel)) do
                 yield { forward = direction; top = None }
                 remainingAngle <- Vec3.angle shipFacingS.Value direction * degPerRad
@@ -54,41 +60,38 @@ module Execution =
     }
 
     let executeNextExt (mission: Mission) (warpHeadroom: float<s>) (mode: ExecutionMode) =
-        printfn "Executing maneuver node"
+        printfn "Executing maneuver node fopr %s" mission.ActiveVessel.Name
 
         let ship = mission.ActiveVessel
         let control = ship.Control
         let node = control.Nodes.[0]
 
-        // TODO: compute burn time across multiple stages
-        let currentStage = control.CurrentStage
+        //let stageInfo stage =
+        //    let stageParts = query {
+        //        for part in ship.Parts.All do
+        //        where (part.DecoupleStage = stage - 1 || (part.Stage = stage && part.DecoupleStage = -1))
+        //        select part
+        //    }
+        //    let engines = query {
+        //        for part in stageParts do
+        //        let engine = part.Engine
+        //        where (engine <> null)
+        //        select (floatU <| engine.MaxVacuumThrust.As<N>(), floatU <| engine.VacuumSpecificImpulse.As<s>())
+        //    }
+        //    printfn "  Parts in stage %d" stage
+        //    if Seq.isEmpty engines then
+        //        None
+        //    else
+        //        for p in stageParts do
+        //            printfn "    part %s, active %d, decouple %d" p.Name p.Stage p.DecoupleStage
+        //        let thrust = engines |> Seq.sumBy fst
+        //        let isp = thrust / Seq.sumBy (fun (f, isp) -> f / isp) engines
+        //        let propellantMass = query {
+        //                for part in stageParts do
+        //                sumBy (part.Mass.As<kg>() - part.DryMass.As<kg>())
+        //            }
 
-        let stageInfo stage =
-            let stageParts = query {
-                for part in ship.Parts.All do
-                where (part.DecoupleStage = stage - 1)
-                select part
-            }
-            let engines = query {
-                for part in stageParts do
-                let engine = part.Engine
-                where (engine <> null)
-                select (floatU <| engine.MaxVacuumThrust.As<N>(), floatU <| engine.VacuumSpecificImpulse.As<s>())
-            }
-            printfn "  Parts in stage %d" stage
-            if Seq.isEmpty engines then
-                None
-            else
-                for p in stageParts do
-                    printfn "    part %s, active %d, decouple %d" p.Name p.Stage p.DecoupleStage
-                let thrust = engines |> Seq.sumBy fst
-                let isp = thrust / Seq.sumBy (fun (f, isp) -> f / isp) engines
-                let propellantMass = query {
-                        for part in stageParts do
-                        sumBy (part.Mass.As<kg>() - part.DryMass.As<kg>())
-                    }
-
-                Some (thrust, isp, propellantMass)
+        //        Some (thrust, isp, propellantMass)
 
         let decoupledDryMass stage = query {
                 for part in ship.Parts.All do
@@ -96,75 +99,52 @@ module Execution =
                 sumBy (part.DryMass.As<kg>())
             }
 
-        let rec computeBetterBurnTime (dv: float<m/s>) (m0: float<kg>) (stage: int): float<s> =
-            printfn "Stage %d:" stage
-            if stage = -1 then
-                0.<s>
-            else
-                let nextStage mfStage dvStage =
-                    let decoupledMass = decoupledDryMass (stage - 1)
-                    
+        let rec computeBetterBurnTime (dv: float<m/s>) (stages: List<TwrInfo>): float<s> =
+            match stages with
+            | [] -> 0.<s>
+            | current :: later ->
+                let nextStage dvStage =
                     printfn "  dv in this stage = %.1f m/s" dvStage
-                    printfn "  decoupling %.1f kg" decoupledMass
-
-                    computeBetterBurnTime (dv - dvStage) (mfStage - decoupledMass) (stage - 1)
-
-                match stageInfo stage with
-                | Some(F, Isp, propellant) -> 
-                    let ve = Isp * 9.80665<m/s^2> // effective exhaust velocity
-                    printfn "  dv = %.1f m/s ; Isp = %.1f s ; ve = %.1f m/s ; F = %.1f" dv Isp ve F
+                    computeBetterBurnTime (dv - dvStage) later
+                
+                if current.thrust > 0.<N> then
+                    let ve = current.isp * 9.80665<m/s^2> // effective exhaust velocity
+                    printfn "  dv = %.1f m/s ; Isp = %.1f s ; ve = %.1f m/s ; F = %.1f" dv current.isp ve current.thrust
 
                     // Tsiolkovsky rocket equation solved for final mass
-                    let mf = Tsiolkovsky.finalMass dv ve m0
+                    let mf = Tsiolkovsky.finalMass dv ve current.initialMass
 
                     // compute mass of exhaust per second
-                    let fuelFlow: float<kg/s> = F / ve
+                    let fuelFlow: float<kg/s> = current.thrust / ve
 
-                    let burnTimeStage = propellant / fuelFlow
+                    let burnTimeStage = current.propellant / fuelFlow
                 
-                    printfn "  m0 = %.1f kg; mf = %.1f kg ; m_prop = %.1f kg ; flow = %.1f " m0 mf propellant fuelFlow
+                    printfn "  m0 = %.1f kg; mf = %.1f kg ; m_prop = %.1f kg ; flow = %.1f " current.initialMass mf current.propellant fuelFlow
                     printfn "  stage burnt out after %.1f s" burnTimeStage
 
-                    if m0 - mf <= propellant then
+                    if current.initialMass - mf <= current.propellant then
                         // current stage is enough
-                        let burnTime = (m0 - mf) / fuelFlow
+                        let burnTime = (current.initialMass - mf) / fuelFlow
 
                         printfn "  burn time %.1f s is enough" burnTime
 
                         burnTime
                     else
                         // current stage is not enough
-                        let mfStage = m0 - propellant
-                        let dvStage = Tsiolkovsky.deltaV ve m0 mfStage
+                        let mfStage = current.initialMass - current.propellant
+                        let dvStage = Tsiolkovsky.deltaV ve current.initialMass mfStage
                         
-                        let remaining = nextStage mfStage dvStage
+                        let remaining = nextStage dvStage
 
                         burnTimeStage + remaining
-                | None ->
+                else
                     printfn "No engines in this stage"
-                    nextStage m0 0.<m/s>
+                    nextStage 0.<m/s>
         
         // 2. Compute initial burn time
-        let computeBurnTime dv =
-            let Isp = float ship.SpecificImpulse * 1.<s>
-            let ve = Isp * 9.80665<m/s^2> // effective exhaust velocity
-            let m0 = float ship.Mass * 1.<kg> // initial mass
-        
-            printfn "dv = %.1f m/s ; Isp = %.1f s ; ve = %.1f m/s ; m0 = %f kg" dv Isp ve m0
 
-            // Tsiolkovsky rocket equation solved for final mass
-            let mf = Tsiolkovsky.finalMass dv ve m0
-
-            // compute mass of exhaust per second
-            let F = floatU (ship.AvailableThrust.As<N>())
-            let fuelFlow: float<kg/s> = F / ve
-            let burnTime = (m0 - mf) / fuelFlow
-
-            printfn "mf = %f kg ; flow = %.1f ; burn time = %.1f s" mf fuelFlow burnTime
-
-            burnTime
-
-        let initialBurnTime = computeBetterBurnTime (node.RemainingDeltaV.As<m/s>()) (floatU <| ship.Mass.As<kg>()) control.CurrentStage // computeBurnTime (node.RemainingDeltaV * 1.<m/s>)
+        let twrInfo = Staging.computeStageEngineInfo ship
+        let initialBurnTime = computeBetterBurnTime (node.RemainingDeltaV.As<m/s>()) twrInfo // computeBurnTime (node.RemainingDeltaV * 1.<m/s>)
 
         
         printfn "Overall burn time: %.1f s" initialBurnTime
@@ -205,25 +185,28 @@ module Execution =
         
         let initialBurnDir = Vec3.norm burnVectorS.Value
 
-        AttitudeControl.loop mission node.ReferenceFrame <| seq {
+        let controlProfile =
+            //if ship.Mass.As<kg>() > 30_000.f<kg> then
+            //    AttitudeControl.Heavy
+            //else
+                AttitudeControl.Medium
+
+        AttitudeControl.loopWithProfile mission controlProfile node.ReferenceFrame <| seq {
             while mission.UniversalTime < burnStartT do
                 yield { forward = Vec3.unitY; top = None }
 
             printfn "Commencing burn"
                 
-            let isDeviating () = Vec3.angle burnVectorS.Value initialBurnDir > 45.<deg> / degPerRad
             let isCompleted () = Vec3.mag burnVectorS.Value < 0.05<m/s>
+            // TODO: not suitable for very long burns
+            let isDeviating () = Vec3.angle burnVectorS.Value initialBurnDir > 45.<deg> / degPerRad
             
             control.Throttle <- 1.f;
 
             while not (isCompleted () || isDeviating ()) do
 
-                if Staging.shouldStage ship then
+                if not (Staging.hasThrust ship) then
                     ship.Control.ActivateNextStage() |> ignore
-                    // recompute burn time
-                    printfn "Recomputing burn"
-                    let newBurnTime = computeBetterBurnTime (node.RemainingDeltaV.As<m/s>()) (floatU <| ship.Mass.As<kg>()) control.CurrentStage
-                    printfn "Remaining burn time %.1f s" newBurnTime
 
                 let throttle = throttlePid.Update(mission.UniversalTime, - Vec3.mag burnVectorS.Value)
                 control.Throttle <- float32U throttle

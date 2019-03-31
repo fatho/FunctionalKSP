@@ -18,6 +18,7 @@ open ANewDawn.Math.Kepler
 open ANewDawn.Maneuver
 open ANewDawn.Control
 open ANewDawn.Math
+open System.Linq
 
 
 let rescueFromLko () =
@@ -45,8 +46,30 @@ let rescueFromLko () =
 
     let _deorbit = Maneuver.Interception.addSurfaceInterceptionNode mission (-0.10266804865356<deg>, -74.575385655446<deg>) 45_000.<m> (60.<s>, mission.ActiveVessel.Orbit.Period.As<s>())
     Maneuver.Execution.executeNext mission 30.<s>
+
+    Thread.Sleep(1000) // ensures that the throttle is actually zero before the engine is decoupled
+
+    printfn "Separating descent stage"
+    // Decouple engine
+    mission.ActiveVessel.Control.ActivateNextStage() |> ignore
     
-    printfn "Assume manual control!"
+    let flight = mission.ActiveVessel.Flight()
+    use altitudeS = mission.Streams.UseStream<m>(fun () -> flight.SurfaceAltitude)
+
+    while altitudeS.Value > 70_000.<m> do
+        mission.Tick() |> ignore
+        
+    printfn "Entered atmosphere - orienting retrograde"
+                
+    AttitudeControl.loop mission mission.ActiveVessel.SurfaceVelocityReferenceFrame <| seq {
+
+        while altitudeS.Value > 1_500.<m> do
+            yield { forward = - Vec3.unitY; top = None }
+            
+    }
+
+    printfn "Opening parachutes"
+    mission.ActiveVessel.Control.Parachutes <- true
     
     
 let rescueFromHko () =
@@ -108,6 +131,9 @@ let launchKerbinScanner () =
 
     let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Apoapsis
     Maneuver.Execution.executeNext mission 30.<s>
+
+    ship.Control.SolarPanels <- true
+    ship.Control.Antennas <- true
     
     let _transfer: Node = Maneuver.Orbital.addHohmannNode mission Apsis.Apoapsis 450_000.<m>
     Maneuver.Execution.executeNext mission 30.<s>
@@ -154,24 +180,156 @@ let launchMunScanner () =
     ship.Control.Lights <- true // HACK: light switch toggles scanner
 
     ()
+   
+let launch (target: Option<string>) =
+    use conn = new Connection()
+    use mission = new Mission(conn)
+    let ship = mission.SpaceCenter.ActiveVessel
+
+    printfn "Launching %s" ship.Name
+
+    match target with
+    | None -> Launch.launch mission Launch.KerbinProfile 
+    | Some(name) ->
+        let body = mission.SpaceCenter.Bodies.[name]
+        Launch.launchToInclination mission Launch.KerbinProfile body.Orbit
+
+    let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Apoapsis
+    Maneuver.Execution.executeNext mission 30.<s>
+    
+let exec () =
+    use conn = new Connection()
+    use mission = new Mission(conn)
+    let ship = mission.SpaceCenter.ActiveVessel
+
+    Maneuver.Execution.executeNext mission 30.<s>
+    
+let kerboGrabber () =
+    use conn = new Connection()
+    use mission = new Mission(conn)
+    let ship = mission.SpaceCenter.ActiveVessel
+    
+    let target = mission.SpaceCenter.TargetVessel
+       
+    printfn "Launching into target orbit inclination"
+    Launch.launchToInclination mission Launch.KerbinProfile target.Orbit
+
+    ship.Control.SolarPanels <- true
+
+    let _circ: Node = Maneuver.Orbital.addCircularizationNode mission Apsis.Apoapsis
+    Maneuver.Execution.executeNext mission 30.<s>
+
+    printfn "Fine tune inclination, press enter to execute"
+    let _ = Console.ReadLine()
+    Maneuver.Execution.executeNext mission 30.<s>
+
+    let selfPeriod = ship.Orbit.Period.As<s>()
+    let tgtPeriod = target.Orbit.Period.As<s>()
+    
+    let _intercept: Option<Node> = Maneuver.Interception.addVesselInterceptionNode mission target.Orbit (120.<s>, selfPeriod) (selfPeriod, tgtPeriod * 0.6)
+    printfn "Fine tune interception, press enter to execute"
+    let _ = Console.ReadLine()
+    Maneuver.Execution.executeNext mission 30.<s>
+
+    let _catchUp = Maneuver.Interception.addCatchUpTargetNode mission target.Orbit
+    Maneuver.Execution.executeNextExt mission 30.<s> { earlyStartFactor = 1.0 }
+    
+let autoScience () =
+    use conn = new Connection()
+    use mission = new Mission(conn)
+    let ship = mission.SpaceCenter.ActiveVessel
+        
+    //for p in ship.Parts.All do
+    //    printfn "%s" p.Name
+    //    for m in p.Modules do
+    //        printfn "  %s" m.Name
+    //        for a in m.Actions do
+    //            printfn "    %s" a
+
+    let experiments = ship.Parts.Experiments
+
+    let control = ship.Control
+
+    let biome = mission.Streams.UseStream<string>(fun () -> ship.Biome)
+    let gear = mission.Streams.UseStream<bool>(fun () -> control.Gear)
+
+    let container = query {
+        for p in ship.Parts.WithName("ScienceBox") do
+        for m in p.Modules do
+        where (m.Name = "ModuleScienceContainer")
+        select m
+        head
+    }
+    
+    while true do
+        // printfn "Now in %s" biome.Value
+
+        for e in experiments do
+            printfn "Running %s" e.Part.Name
+            if e.Available then
+                if e.HasData && e.Rerunnable then
+                    e.Dump()
+                    e.Reset()
+                    while e.HasData do
+                        mission.Tick() |> ignore
+                e.Run()
+        
+        printfn "Storing data"
+
+        for i in {0..10} do
+            mission.Tick() |> ignore
+
+        if container.Events.Contains("Container: Collect All") then
+            container.TriggerEvent("Container: Collect All")
+        else
+            printfn "No new data gathered"
+        
+        printfn "Done, waiting for Biome change"
+          
+        gear.WaitForChange() |> ignore
+
+    //let experiments = query {
+    //    for p in ship.Parts.All do
+    //    for m in p.Modules do
+    //    where (m.Name = "ModuleScienceExperiment")
+    //}
+    
+
+let debugTest () =
+    use conn = new Connection()
+    use mission = new Mission(conn)
+    
+    let ship = mission.ActiveVessel
+
+    for e in Staging.computeStageEngineInfo ship do
+        printfn "%O" e
+
 
 [<EntryPoint>]
 let main argv = 
+    exec ()
+    // kerboGrabber ()
+    // SatelliteConstellation.run ()
+    // debugTest ()
+    // launch None
+    //launch (Some "Minmus")
+    // autoScience ()
+    // launchKerbinScanner ()
     // MinmusResearchVessel.run ()
     // rescueFromLko ()
     // MunLander.run ()
-    let kerbinMu = 3.5316000e12<m^3/s^2>
+    //let kerbinMu = 3.5316000e12<m^3/s^2>
 
-    let sidereal = 21_549.425<s>
-    let solar = 21_600.0<s>
+    //let sidereal = 21_549.425<s>
+    //let solar = 21_600.0<s>
 
-    let rKerbin = 600.e3<m>
+    //let rKerbin = 600.e3<m>
 
-    printfn "%f" (Util.cbrt (Util.cube 13.))
-    printfn "%.0f" (Kepler.semiMajorAxisFromPeriod kerbinMu sidereal - rKerbin)
-    printfn "%.0f" (Kepler.semiMajorAxisFromPeriod kerbinMu solar - rKerbin)
+    //printfn "%f" (Util.cbrt (Util.cube 13.))
+    //printfn "%.0f" (Kepler.semiMajorAxisFromPeriod kerbinMu sidereal - rKerbin)
+    //printfn "%.0f" (Kepler.semiMajorAxisFromPeriod kerbinMu solar - rKerbin)
 
-    let sma = 2863.33e3<m> + rKerbin
+    //let sma = 2863.33e3<m> + rKerbin
 
-    printfn "%.3f" (Kepler.orbitalPeriod kerbinMu sma)
+    //printfn "%.3f" (Kepler.orbitalPeriod kerbinMu sma)
     0

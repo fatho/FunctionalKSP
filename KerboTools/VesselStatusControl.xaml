@@ -1,0 +1,211 @@
+﻿<UserControl x:Class="KerboTools.VesselStatusControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:KerboTools"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <UserControl.Resources>
+    </UserControl.Resources>
+    <Border BorderThickness="1" BorderBrush="White">
+        <StackPanel>
+            <TextBlock TextAlignment="Center" Text="Status" />
+            <Grid Margin="5,5,5,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ToggleButton Grid.Row="0" Grid.Column="0" Style="{StaticResource StatusButton}" IsChecked="{Binding SAS}">
+                    <TextBlock Text="SAS"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="0" Grid.Column="1" Style="{StaticResource StatusButton}" IsChecked="{Binding RCS}">
+                    <TextBlock Text="RCS"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="0" Grid.Column="2" Style="{StaticResource StatusButton}" IsChecked="{Binding Gear}">
+                    <TextBlock Text="Gear"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="0" Grid.Column="3" Style="{StaticResource StatusButton}" IsChecked="{Binding Lights}">
+                    <TextBlock Text="Light"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="0" Grid.Column="4" Style="{StaticResource StatusButton}" IsChecked="{Binding Brakes}">
+                    <TextBlock Text="Brakes"/>
+                </ToggleButton>
+
+                <ToggleButton Grid.Row="1" Grid.Column="0" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[1]}">
+                    <TextBlock Text="AG 1"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="1" Grid.Column="1" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[2]}">
+                    <TextBlock Text="AG 2"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="1" Grid.Column="2" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[3]}">
+                    <TextBlock Text="AG 3"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="1" Grid.Column="3" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[4]}">
+                    <TextBlock Text="AG 4"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="1" Grid.Column="4" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[5]}">
+                    <TextBlock Text="AG 5"/>
+                </ToggleButton>
+
+                <ToggleButton Grid.Row="2" Grid.Column="0" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[6]}">
+                    <TextBlock Text="AG 6"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="2" Grid.Column="1" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[7]}">
+                    <TextBlock Text="AG 7"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="2" Grid.Column="2" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[8]}">
+                    <TextBlock Text="AG 8"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="2" Grid.Column="3" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[9]}">
+                    <TextBlock Text="AG 9"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="2" Grid.Column="4" Style="{StaticResource StatusButton}" IsChecked="{Binding ActionGroups[0]}">
+                    <TextBlock Text="AG 10"/>
+                </ToggleButton>
+
+                <ToggleButton Grid.Row="3" Grid.Column="0" Style="{StaticResource StatusButton}" IsChecked="{Binding SolarPanels}">
+                    <TextBlock Text="Solar"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="3" Grid.Column="1" Style="{StaticResource StatusButton}" IsChecked="{Binding Antennas}">
+                    <TextBlock Text="Antenna"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="3" Grid.Column="2" Style="{StaticResource StatusButton}" IsChecked="{Binding Parachutes}">
+                    <TextBlock Text="Chutes"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="3" Grid.Column="3" Style="{StaticResource StatusButton}" IsChecked="{Binding CargoBays}">
+                    <TextBlock Text="Cargo"/>
+                </ToggleButton>
+                <ToggleButton Grid.Row="3" Grid.Column="4" Style="{StaticResource StatusButton}" IsChecked="{Binding Abort}">
+                    <TextBlock Text="ABORT"/>
+                </ToggleButton>
+            </Grid>
+            <Grid Margin="5,5,5,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Stage" HorizontalAlignment="Center" Grid.Row="0" Grid.Column="1" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Text="Total" HorizontalAlignment="Center" Grid.Row="0" Grid.Column="2" Style="{StaticResource LabelStyle}"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Lf " HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <ProgressBar Grid.Row="1" Grid.Column="1" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding StageResources.MaxLiquidFuel, Mode=OneWay}" Value="{Binding StageResources.CurrentLiquidFuel, Mode=OneWay}" />
+                <StackPanel Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StageResources.MaxLiquidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding StageResources.CurrentLiquidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+                <ProgressBar Grid.Row="1" Grid.Column="2" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding TotalResources.MaxLiquidFuel, Mode=OneWay}" Value="{Binding TotalResources.CurrentLiquidFuel, Mode=OneWay}" />
+                <StackPanel Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalResources.MaxLiquidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding TotalResources.CurrentLiquidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Ox " HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <ProgressBar Grid.Row="2" Grid.Column="1" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding StageResources.MaxOxidizer, Mode=OneWay}" Value="{Binding StageResources.CurrentOxidizer, Mode=OneWay}" />
+                <StackPanel Grid.Row="2" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StageResources.MaxOxidizer, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding StageResources.CurrentOxidizer, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+                <ProgressBar Grid.Row="2" Grid.Column="2" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding TotalResources.MaxOxidizer, Mode=OneWay}" Value="{Binding TotalResources.CurrentOxidizer, Mode=OneWay}" />
+                <StackPanel Grid.Row="2" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalResources.MaxOxidizer, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding TotalResources.CurrentOxidizer, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Mono " HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <ProgressBar Grid.Row="3" Grid.Column="1" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding StageResources.MaxMonoPropellant, Mode=OneWay}" Value="{Binding StageResources.CurrentMonoPropellant, Mode=OneWay}" />
+                <StackPanel Grid.Row="3" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StageResources.MaxMonoPropellant, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding StageResources.CurrentMonoPropellant, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+                <ProgressBar Grid.Row="3" Grid.Column="2" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding TotalResources.MaxMonoPropellant, Mode=OneWay}" Value="{Binding TotalResources.CurrentMonoPropellant, Mode=OneWay}" />
+                <StackPanel Grid.Row="3" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalResources.MaxMonoPropellant, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding TotalResources.CurrentMonoPropellant, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="EC " HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <ProgressBar Grid.Row="6" Grid.Column="1" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding StageResources.MaxElectricCharge, Mode=OneWay}" Value="{Binding StageResources.CurrentElectricCharge, Mode=OneWay}" />
+                <StackPanel Grid.Row="6" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StageResources.MaxElectricCharge, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding StageResources.CurrentElectricCharge, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+                <ProgressBar Grid.Row="6" Grid.Column="2" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding TotalResources.MaxElectricCharge, Mode=OneWay}" Value="{Binding TotalResources.CurrentElectricCharge, Mode=OneWay}" />
+                <StackPanel Grid.Row="6" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalResources.MaxElectricCharge, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding TotalResources.CurrentElectricCharge, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Sf " HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <ProgressBar Grid.Row="4" Grid.Column="1" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding StageResources.MaxSolidFuel, Mode=OneWay}" Value="{Binding StageResources.CurrentSolidFuel, Mode=OneWay}" />
+                <StackPanel Grid.Row="4" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StageResources.MaxSolidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding StageResources.CurrentSolidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+                <ProgressBar Grid.Row="4" Grid.Column="2" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding TotalResources.MaxSolidFuel, Mode=OneWay}" Value="{Binding TotalResources.CurrentSolidFuel, Mode=OneWay}" />
+                <StackPanel Grid.Row="4" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalResources.MaxSolidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding TotalResources.CurrentSolidFuel, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Xe " HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <ProgressBar Grid.Row="5" Grid.Column="1" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding StageResources.MaxXenon, Mode=OneWay}" Value="{Binding StageResources.CurrentXenon, Mode=OneWay}" />
+                <StackPanel Grid.Row="5" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StageResources.MaxXenon, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding StageResources.CurrentXenon, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+                <ProgressBar Grid.Row="5" Grid.Column="2" Margin="2,2,2,2" Style="{StaticResource GaugeStyle}" Maximum="{Binding TotalResources.MaxXenon, Mode=OneWay}" Value="{Binding TotalResources.CurrentXenon, Mode=OneWay}" />
+                <StackPanel Grid.Row="5" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalResources.MaxXenon, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                    <TextBlock Text="/" />
+                    <TextBlock Text="{Binding TotalResources.CurrentXenon, Mode=OneWay, StringFormat={}{0:0.0}}" />
+                </StackPanel>
+
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

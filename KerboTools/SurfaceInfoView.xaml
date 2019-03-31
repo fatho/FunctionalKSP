@@ -1,0 +1,70 @@
+﻿<UserControl x:Class="KerboTools.SurfaceInfoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:KerboTools"
+             xmlns:conv="clr-namespace:KerboTools.Converters"
+             mc:Ignorable="d" 
+             d:DesignHeight="200" d:DesignWidth="400">
+    <UserControl.Resources>
+        <conv:LengthConverter x:Key="lengthConverter" />
+        <conv:VelocityConverter x:Key="velocityConverter" />
+        <conv:LatLonConverter x:Key="latConverter" NegativeSuffix="S" PositiveSuffix="N" />
+        <conv:LatLonConverter x:Key="lonConverter" NegativeSuffix="W" PositiveSuffix="E" />
+        <conv:UnitConverter x:Key="kpaConverter" ConversionFactor="1000" Unit="kPa" Decimals="0" />
+    </UserControl.Resources>
+    <Border BorderThickness="1" BorderBrush="White">
+        <StackPanel>
+            <TextBlock TextAlignment="Center" Text="Surface" />
+            <Grid Margin="5,5,5,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="0" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Current" HorizontalAlignment="Center" Grid.Row="0" Grid.Column="1" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Text="Target" HorizontalAlignment="Center" Grid.Row="0" Grid.Column="2" Style="{StaticResource LabelStyle}"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Latitude" HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Latitude,Converter={StaticResource latConverter}}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Longitude" HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Longitude,Converter={StaticResource lonConverter}}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="3" Grid.Column="2" Text="" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Velocity" HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Velocity,Converter={StaticResource velocityConverter}}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="5" Grid.Column="2" Text="" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Atm. Pres." HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding AtmosphericPressure,Converter={StaticResource kpaConverter}}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="6" Grid.Column="2" Text="-" HorizontalAlignment="Center" Style="{StaticResource LabelStyle}"/>
+
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Dyn. Pres." HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding DynamicPressure,Converter={StaticResource kpaConverter}}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Radar Alt." HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding RadarAltitude,Converter={StaticResource lengthConverter}}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="4" Grid.Column="2" Text="-" HorizontalAlignment="Center" Style="{StaticResource LabelStyle}"/>
+
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Biome" HorizontalAlignment="Right" Style="{StaticResource LabelStyle}"/>
+                <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding Biome}" HorizontalAlignment="Right" Style="{StaticResource ValueStyle}"/>
+                <TextBlock Grid.Row="8" Grid.Column="2" Text="-" HorizontalAlignment="Center" Style="{StaticResource LabelStyle}"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>
